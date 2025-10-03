@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import { searchQueryType } from "../types/zod/types";
-import { prisma } from "../config/prisma";
-import { Prisma } from "@prisma/client";
+import { Prisma, prisma } from "../config/prisma";
 import logger from "../lib/logger";
 
 // Define a type for the result to improve type safety
