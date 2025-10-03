@@ -14,5 +14,5 @@ app.use('/searchQuery',searchRouter);
 app.use('/company', companyRouter);
 // add()
 app.listen(5000,()=>{
-    console.log("Server is running")
+    console.log("Server is running at 5000")
 })

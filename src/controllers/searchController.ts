@@ -10,8 +10,8 @@ interface StartupWithStats {
   sector: string;
   total_articles: bigint | null;
   avg_sentiment_score: number;
-  total_count: bigint|null;
-  
+  total_count: bigint | null;
+
   // New properties for Article 1 (latest)
   latest_article_1_title: string | null;
   latest_article_1_url: string | null;
@@ -20,7 +20,6 @@ interface StartupWithStats {
   latest_article_1_sentiment_score: number | null; // New properties for Article 1
   latest_article_1_sentiment: string | null; // New properties for Article 1
 
-  
   // New properties for Article 2
   latest_article_2_title: string | null;
   latest_article_2_url: string | null;
@@ -43,10 +42,10 @@ interface StartupResult {
   sector: string;
   total_articles: number | null;
   avg_sentiment_score: number;
-  
+
   latestArticles: {
     title: string | null;
-    url: string | null; 
+    url: string | null;
     content: string | null;
     publishedAt: Date | null;
     sentimentScore: number | null;
@@ -62,12 +61,10 @@ export const search = async (req: Request, res: Response) => {
   const itemsLength = limit ? Number(limit) : 10;
   // CRITICAL FIX: The offset calculation was incorrect. It should be (page - 1) * limit.
   const offset = (pageNumber - 1) * itemsLength;
-  console.log(sentimentScoreLimit)
-  const conditions = [];
-  if(searchQuery){
-    conditions.push(
-  Prisma.sql`(s.name ILIKE ${`%${searchQuery}%`})`
-);
+  console.log(sentimentScoreLimit);
+  const conditions:Prisma.Sql [] = [];
+  if (searchQuery) {
+    conditions.push(Prisma.sql`s.name ILIKE ${`%${searchQuery}%`}`);
   }
   if (industry) {
     conditions.push(Prisma.sql`s.sector ILIKE ${`%${industry}%`}`);
@@ -92,7 +89,7 @@ export const search = async (req: Request, res: Response) => {
   const whereClause =
     conditions.length > 0
       ? Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`
-      : Prisma.empty;
+      : "";
   try {
     // --- The Single, Optimized Query ---
     const results = await prisma.$queryRaw<StartupWithStats[]>`
@@ -155,38 +152,56 @@ export const search = async (req: Request, res: Response) => {
     OFFSET ${offset}
   `;
     // Extract the total count from the first result row. If no results, count is 0.
-    const formattedResults = results.map(({latest_article_1_content,latest_article_1_published_at,latest_article_1_title,latest_article_1_url,latest_article_2_content,latest_article_2_published_at,latest_article_2_title,latest_article_2_url,latest_article_3_content,latest_article_3_published_at,latest_article_3_title,latest_article_3_url,...result}) => ({
-      ...result,
-      latestArticles:[
-        {
-          title: latest_article_1_title,
-          url: latest_article_1_url,
-          content: latest_article_1_content,
-          publishedAt: latest_article_1_published_at,
-          sentimentScore: result.latest_article_1_sentiment_score,
-          sentiment: result.latest_article_1_sentiment
-        }, {
-          title: latest_article_2_title,
-          url: latest_article_2_url,  
-          content: latest_article_2_content,
-          publishedAt: latest_article_2_published_at,
-          sentimentScore: result.latest_article_2_sentiment_score,
-          sentiment: result.latest_article_2_sentiment
-        }, {
-          title: latest_article_3_title,
-          url: latest_article_3_url,
-          content: latest_article_3_content,
-          publishedAt: latest_article_3_published_at,
-          sentimentScore: result.latest_article_3_sentiment_score,
-          sentiment: result.latest_article_3_sentiment
-        }
-      ]
-    }
-    ))
-    const totalCount = formattedResults.length > 0 ? Number(results[0].total_count) : 0;
+    const formattedResults = results.map(
+      ({
+        latest_article_1_content,
+        latest_article_1_published_at,
+        latest_article_1_title,
+        latest_article_1_url,
+        latest_article_2_content,
+        latest_article_2_published_at,
+        latest_article_2_title,
+        latest_article_2_url,
+        latest_article_3_content,
+        latest_article_3_published_at,
+        latest_article_3_title,
+        latest_article_3_url,
+        ...result
+      }) => ({
+        ...result,
+        latestArticles: [
+          {
+            title: latest_article_1_title,
+            url: latest_article_1_url,
+            content: latest_article_1_content,
+            publishedAt: latest_article_1_published_at,
+            sentimentScore: result.latest_article_1_sentiment_score,
+            sentiment: result.latest_article_1_sentiment,
+          },
+          {
+            title: latest_article_2_title,
+            url: latest_article_2_url,
+            content: latest_article_2_content,
+            publishedAt: latest_article_2_published_at,
+            sentimentScore: result.latest_article_2_sentiment_score,
+            sentiment: result.latest_article_2_sentiment,
+          },
+          {
+            title: latest_article_3_title,
+            url: latest_article_3_url,
+            content: latest_article_3_content,
+            publishedAt: latest_article_3_published_at,
+            sentimentScore: result.latest_article_3_sentiment_score,
+            sentiment: result.latest_article_3_sentiment,
+          },
+        ],
+      })
+    );
+    const totalCount =
+      formattedResults.length > 0 ? Number(results[0].total_count) : 0;
     // const top2Articles=[{title:results}]
     // We need to remove the 'total_count' property from the final data sent to the client.
-    const startups:StartupResult[]= formattedResults.map(
+    const startups: StartupResult[] = formattedResults.map(
       ({ total_count, total_articles, ...rest }) => ({
         ...rest,
         total_articles: total_articles ? Number(total_articles) : null,
