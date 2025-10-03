@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "db:generate": "prisma generate",
-    "build": "npx tsc",
+    "build": "npx prisma generate --no-engine && npx tsc",
     "start": "tsx src/index.ts",
     "dev": "tsx watch --include './src/**/*' src/index.ts"
   },
