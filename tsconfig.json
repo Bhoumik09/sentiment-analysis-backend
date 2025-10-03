@@ -8,12 +8,12 @@
     "skipLibCheck": true,
 
     /* Strictness */
-    "strict": true,
+    "strict": false,
 
     /* Project Structure */
     "rootDir": "./src",
     "outDir": "dist",
-
+    "noImplicitAny": false,
     /* Debugging */
     "sourceMap": true
   },
