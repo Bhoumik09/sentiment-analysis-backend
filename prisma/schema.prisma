@@ -1,51 +1,39 @@
-  // This is your Prisma schema file,
-  // learn more about it in the docs: https://pris.ly/d/prisma-schema
+generator client {
+  provider = "prisma-client-js"
+}
 
-  // Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-  // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
 
-  generator client {
-    provider = "prisma-client-js"
-  }
+model User {
+  id       String @id @default(uuid())
+  name     String
+  email    String @unique
+  password String
+  roleId   Int    @default(1)
+}
 
-  datasource db {
-    provider = "postgresql"
-    url      = env("DATABASE_URL")
-  }
+model Articles {
+  id              String   @id @default(uuid())
+  title           String
+  content         String
+  publishedAt     DateTime
+  url             String?
+  createdAt       DateTime @default(now())
+  sentimentScores Float?
+  sentiment       String
+  startupId       String
+  startup         Startups @relation("Articles", fields: [startupId], references: [id], onDelete: Cascade)
+}
 
-  model User {
-    id       String @id @default(uuid()) 
-    name     String
-    email    String @unique
-    password String
-    roleId   Int    @default(1)
-  }
-
-  model Articles {
-    id              String         @id @default(uuid()) 
-    title           String
-    content         String
-    publishedAt     DateTime
-    url             String?
-    createdAt       DateTime       @default(now())
-    sentimentScores Float?
-    sentiment       sentimentTypes
-    startupId       String         
-    startup         Startups       @relation("Articles", references: [id], fields: [startupId], onDelete: Cascade)
-  }
-
-  model Startups {
-    id              String     @id @default(uuid()) 
-    name            String
-    sector          String
-    findingKeywords String[]
-    description     String?
-    articles        Articles[] @relation("Articles")
-    createdAt       DateTime @default(now())
-  }
-
-  enum sentimentTypes {
-    positive
-    negative
-    neutral
-  }
+model Startups {
+  id              String     @id @default(uuid())
+  name            String
+  sector          String
+  findingKeywords String[]
+  description     String?
+  createdAt       DateTime   @default(now())
+  articles        Articles[] @relation("Articles")
+}

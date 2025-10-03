@@ -58,7 +58,7 @@ export const login = async (req: Request, res: Response) => {
   } catch (e: any) {
     logger.error("There was an error in login", {
       email,
-      id: req.user.id,
+      id: req.user?.id,
       error: e.message,
     });
     res
