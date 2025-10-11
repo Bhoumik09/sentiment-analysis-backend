@@ -1,5 +1,7 @@
 import winston from "winston";
 import DailyRotateFile from "winston-daily-rotate-file";
+import path from 'path';
+import os from 'os'
 const levels = {
   error: 0,
   warn: 1,
@@ -46,7 +48,8 @@ const fileFormat = winston.format.combine(
 const transports = [
   new winston.transports.Console(),
   new DailyRotateFile({
-    filename: "logs/error.log",
+  filename: path.join(os.tmpdir(), 'logs', 'error-%DATE%.log'),
+
     level: "error",
     datePattern: "YYYY-MM-DD",
     zippedArchive: true,
