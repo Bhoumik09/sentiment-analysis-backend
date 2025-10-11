@@ -1,0 +1,2 @@
+{"timestamp":"2025-10-11 12:15:58:1558","level":"\u001b[31merror\u001b[39m","message":"\u001b[31mError occurred while validating the token\u001b[39m","error":"invalid signature"}
+{"timestamp":"2025-10-11 12:15:58:1558","level":"\u001b[35mhttp\u001b[39m","message":"\u001b[35m::ffff:127.0.0.1 - - [11/Oct/2025:06:45:58 +0000] \"GET /searchQuery/fetch-data?sentiment=negative HTTP/1.1\" 401 28 \"-\" \"Thunder Client (https://www.thunderclient.com)\"\u001b[39m\n\u001b[35m\u001b[39m"}

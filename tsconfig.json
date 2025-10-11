@@ -12,7 +12,7 @@
 
     /* Project Structure */
     "rootDir": "./src",
-    "outDir": "dist",
+    "outDir": "./dist",
     "noImplicitAny": false,
     /* Debugging */
     "sourceMap": true
