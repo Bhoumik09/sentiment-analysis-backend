@@ -2,6 +2,7 @@ import winston from "winston";
 import DailyRotateFile from "winston-daily-rotate-file";
 import path from 'path';
 import os from 'os'
+import TransportStream from "winston-transport";
 const levels = {
   error: 0,
   warn: 1,
@@ -45,33 +46,45 @@ const fileFormat = winston.format.combine(
   }),
 );
 
-const transports = [
-  new winston.transports.Console(),
-  new DailyRotateFile({
-  filename: path.join(os.tmpdir(), 'logs', 'error-%DATE%.log'),
 
-    level: "error",
-    datePattern: "YYYY-MM-DD",
-    zippedArchive: true,
-    maxSize: "40m",
-    maxFiles: "30d",
-    format: fileFormat, // Ensuring JSON format for file logs
-  }),
-  new DailyRotateFile({
-    filename: path.join(os.tmpdir(), 'logs', 'error-%DATE%.log'),
-    datePattern: "YYYY-MM-DD",
-    zippedArchive: true,
-    maxSize: "40m",
-    maxFiles: "30d",
-    format: fileFormat, // Ensuring JSON format for file logs
-  }),
+
+
+// Start with the transport that works everywhere
+const transports:TransportStream[] = [
+  new winston.transports.Console(),
 ];
+
+// --- THIS IS THE KEY CHANGE ---
+// Only add file transports if NOT in production
+if (process.env.NODE_ENV !== 'PRODUCTION') {
+  transports.push(
+    new DailyRotateFile({
+      filename: path.join(os.tmpdir(), 'logs', 'error-%DATE%.log'),
+      level: "error",
+      datePattern: "YYYY-MM-DD",
+      zippedArchive: true,
+      maxSize: "40m",
+      maxFiles: "30d",
+      format: fileFormat,
+    }),
+    new DailyRotateFile({
+      // 👇 I also fixed a copy-paste error here, this should be 'all-%DATE%.log'
+      filename: path.join(os.tmpdir(), 'logs', 'all-%DATE%.log'),
+      datePattern: "YYYY-MM-DD",
+      zippedArchive: true,
+      maxSize: "40m",
+      maxFiles: "30d",
+      format: fileFormat,
+    })
+  );
+}
 
 const logger = winston.createLogger({
   level: level(),
   levels,
   format,
-  transports,
+  transports, // Use the dynamically built array
 });
 
 export default logger;
+
