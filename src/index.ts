@@ -14,6 +14,9 @@ app.use("/auth", authRouter);
 app.use("/dashboard", dashboardRouter);
 app.use("/searchQuery", searchRouter);
 app.use("/company", companyRouter);
+app.get("/", (req, res) => {
+  res.send("API is running....");
+});
 // add()
 if (process.env.NODE_ENV !== "PRODUCTION") {
   app.listen(5000, () => {
