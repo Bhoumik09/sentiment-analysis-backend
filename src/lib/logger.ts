@@ -3,6 +3,9 @@ import DailyRotateFile from "winston-daily-rotate-file";
 import path from 'path';
 import os from 'os'
 import TransportStream from "winston-transport";
+import dotenv from "dotenv";
+
+dotenv.config();
 const levels = {
   error: 0,
   warn: 1,
