@@ -1,11 +1,10 @@
 import {z} from 'zod'
-import { search } from '../../controllers/searchController'
 export const loginBodySchema=z.object({
-    email:z.email({error:"Enter a valid email Id"}),
+    email:z.email({error:"Enter a valid email Id"}).toLowerCase(),
     password:z.string().min(8, {error:'Password should be a min length of 8'})
 })
 export const signupBodySchema=z.object({
-    email:z.email({error:"Enter a valid email Id"}),
+    email:z.email({error:"Enter a valid email Id"}).toLowerCase(),
     password:z.string().min(8, {error:'Password should be a min length of 8'}),
     name:z.string()
 })

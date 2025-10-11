@@ -9,6 +9,7 @@ import { secretKey } from "../lib/constants";
 export const login = async (req: Request, res: Response) => {
   const { email, password }: loginBodyType = req.body;
   //check if email exists in the db
+  
   try {
     const isEmailPresent: {
       id: string;
