@@ -8,7 +8,7 @@
     "build": "tsc",
     "start": "tsx src/index.ts",
     "dev": "tsx watch --include './src/**/*' src/index.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate --no-engine"
   },
   "keywords": [],
   "author": "",
