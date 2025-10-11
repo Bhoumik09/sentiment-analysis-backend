@@ -16,6 +16,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const winston_1 = __importDefault(require("winston"));
 const winston_daily_rotate_file_1 = __importDefault(require("winston-daily-rotate-file"));
+const path_1 = __importDefault(require("path"));
+const os_1 = __importDefault(require("os"));
+const dotenv_1 = __importDefault(require("dotenv"));
+dotenv_1.default.config();
 const levels = {
     error: 0,
     warn: 1,
@@ -46,31 +50,36 @@ const fileFormat = winston_1.default.format.combine(winston_1.default.format.tim
         level,
         message }, meta));
 }));
+// Start with the transport that works everywhere
 const transports = [
     new winston_1.default.transports.Console(),
-    new winston_daily_rotate_file_1.default({
-        filename: "logs/error.log",
+];
+// --- THIS IS THE KEY CHANGE ---
+// Only add file transports if NOT in production
+if (process.env.NODE_ENV !== 'PRODUCTION') {
+    transports.push(new winston_daily_rotate_file_1.default({
+        filename: path_1.default.join(os_1.default.tmpdir(), 'logs', 'error-%DATE%.log'),
         level: "error",
         datePattern: "YYYY-MM-DD",
         zippedArchive: true,
         maxSize: "40m",
         maxFiles: "30d",
-        format: fileFormat, // Ensuring JSON format for file logs
-    }),
-    new winston_daily_rotate_file_1.default({
-        filename: "logs/all.log",
+        format: fileFormat,
+    }), new winston_daily_rotate_file_1.default({
+        // 👇 I also fixed a copy-paste error here, this should be 'all-%DATE%.log'
+        filename: path_1.default.join(os_1.default.tmpdir(), 'logs', 'all-%DATE%.log'),
         datePattern: "YYYY-MM-DD",
         zippedArchive: true,
         maxSize: "40m",
         maxFiles: "30d",
-        format: fileFormat, // Ensuring JSON format for file logs
-    }),
-];
+        format: fileFormat,
+    }));
+}
 const logger = winston_1.default.createLogger({
     level: level(),
     levels,
     format,
-    transports,
+    transports, // Use the dynamically built array
 });
 exports.default = logger;
 //# sourceMappingURL=logger.js.map

@@ -13,7 +13,6 @@ const levels = {
   http: 3,
   debug: 4,
 };
-
 const level = () => {
   const env = process.env.NODE_ENV || "development";
   return env === "development" ? "debug" : "warn";
