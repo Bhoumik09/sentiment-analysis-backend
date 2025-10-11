@@ -58,7 +58,7 @@ const transports = [
     format: fileFormat, // Ensuring JSON format for file logs
   }),
   new DailyRotateFile({
-    filename: "logs/all.log",
+    filename: path.join(os.tmpdir(), 'logs', 'error-%DATE%.log'),
     datePattern: "YYYY-MM-DD",
     zippedArchive: true,
     maxSize: "40m",
