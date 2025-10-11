@@ -17,6 +17,6 @@
     /* Debugging */
     "sourceMap": true
   },
-  "include": ["src/**/*"], // Tell TS to only look inside the src folder
+  "include": ["./src/**/*"], // Tell TS to only look inside the src folder
   "exclude": ["node_modules"]
 }

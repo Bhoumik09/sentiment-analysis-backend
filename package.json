@@ -5,9 +5,10 @@
   "main": "index.js",
   "scripts": {
     "db:generate": "prisma generate",
-    "build": "npx prisma generate --no-engine && tsc",
+    "build": "tsc",
     "start": "tsx src/index.ts",
-    "dev": "tsx watch --include './src/**/*' src/index.ts"
+    "dev": "tsx watch --include './src/**/*' src/index.ts",
+    "postinstall": "prisma generate"
   },
   "keywords": [],
   "author": "",

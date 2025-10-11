@@ -16,11 +16,11 @@ app.use(httpLogger_1.httpLogger);
 app.use(express_1.default.urlencoded({ extended: true }));
 app.use(express_1.default.json());
 app.use("/auth", authRoute_1.default);
-app.use('/dashboard', dashboardRoutes_1.default);
-app.use('/searchQuery', searchRoutes_1.default);
-app.use('/company', companyAnalysis_1.default);
+app.use("/dashboard", dashboardRoutes_1.default);
+app.use("/searchQuery", searchRoutes_1.default);
+app.use("/company", companyAnalysis_1.default);
 // add()
-if (process.env.NODE_ENV !== 'production') {
+if (process.env.NODE_ENV !== "PRODUCTION") {
     app.listen(5000, () => {
         console.log("Server is running at 5000");
     });
