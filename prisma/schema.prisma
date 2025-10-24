@@ -1,14 +1,14 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
   previewFeatures = ["typedSql"]
-  binaryTargets = ["native", "debian-openssl-1.1.x"]
-
+  binaryTargets   = ["native", "debian-openssl-1.1.x"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
 model User {
   id       String @id @default(uuid())
   name     String
@@ -18,24 +18,35 @@ model User {
 }
 
 model Articles {
-  id              String   @id @default(uuid())
-  title           String
-  content         String
-  publishedAt     DateTime
-  url             String?
-  createdAt       DateTime @default(now())
-  sentimentScores Float?
-  sentiment       String
-  startupId       String
-  startup         Startups @relation("Articles", fields: [startupId], references: [id], onDelete: Cascade)
+  id                String              @id @default(uuid())
+  title             String
+  content           String
+  publishedAt       DateTime
+  url               String?
+  createdAt         DateTime            @default(now())
+  ArticlesSentiment ArticlesSentiment[]
 }
 
 model Startups {
-  id              String     @id @default(uuid())
-  name            String
-  sector          String
-  findingKeywords String[]
-  description     String?
-  createdAt       DateTime   @default(now())
-  articles        Articles[] @relation("Articles")
+  id                String              @id @default(uuid())
+  name              String
+  sector            String
+  findingKeywords   String[]
+  description       String?
+  createdAt         DateTime            @default(now())
+  imageUrl          String?
+  ArticlesSentiment ArticlesSentiment[]
+}
+
+model ArticlesSentiment {
+  id             String   @id
+  articleId      String
+  startupId      String
+  createdAt      DateTime @default(now())
+  sentiment      String?
+  sentimentScore Float?
+  Articles       Articles @relation(fields: [articleId], references: [id])
+  Startups       Startups @relation(fields: [startupId], references: [id])
+
+  @@unique([articleId, startupId])
 }

@@ -16,7 +16,7 @@ export const dashBoardAnalytics = async (req: Request, res: Response) => {
   COUNT(CASE WHEN sentiment = 'negative' THEN 1 END)*1 as "Negative",
   COUNT(CASE WHEN sentiment = 'neutral' THEN 1 END)*1 as "Neutral",
   count(*) as "totalArticles"
-FROM "Articles";`;
+FROM "ArticlesSentiment";`;
     const statusGrouping = totalArticles.map((articles) => ({
       postiveCount: Number(articles.Positive),
       negativeCount: Number(articles.Negative),
@@ -37,6 +37,7 @@ FROM "Articles";`;
     const monthIncDecStats =
       Number(monthCompare[0].currentMonthCount) -
       Number(monthCompare[0].previousMonthCount);
+    console.log(monthIncDecStats)
 
     //get previous and current week trends for comparison
     const articlesWeeklyStats: {
@@ -47,13 +48,15 @@ FROM "Articles";`;
       avg_sentiment:bigint;
     }[] = await prisma.$queryRaw`
       SELECT
-        COUNT(*) FILTER (WHERE sentiment = 'positive' AND date_trunc('week', "publishedAt") <= date_trunc('week', NOW())) AS "currentWeekPositive",
-        COUNT(*) FILTER (WHERE sentiment = 'negative' AND date_trunc('week', "publishedAt") <= date_trunc('week', NOW())) AS "currentWeekNegative",
-        COUNT(*) FILTER (WHERE sentiment = 'positive' AND date_trunc('week', "publishedAt") <= date_trunc('week', NOW() - interval '1 week')) AS "previousWeekPositive",
-        COUNT(*) FILTER (WHERE sentiment = 'negative' AND date_trunc('week', "publishedAt") <= date_trunc('week', NOW() - interval '1 week')) AS "previousWeekNegative",
-        AVG("sentimentScores") AS "avg_sentiment"
-      FROM "Articles"
+        COUNT(*) FILTER (WHERE als.sentiment = 'positive' AND date_trunc('week', a."publishedAt") <= date_trunc('week', NOW())) AS "currentWeekPositive",
+        COUNT(*) FILTER (WHERE als.sentiment = 'negative' AND date_trunc('week', a."publishedAt") <= date_trunc('week', NOW())) AS "currentWeekNegative",
+        COUNT(*) FILTER (WHERE als.sentiment = 'positive' AND date_trunc('week', a."publishedAt") <= date_trunc('week', NOW() - interval '1 week')) AS "previousWeekPositive",
+        COUNT(*) FILTER (WHERE als.sentiment = 'negative' AND date_trunc('week', a."publishedAt") <= date_trunc('week', NOW() - interval '1 week')) AS "previousWeekNegative",
+        AVG(als."sentimentScore") AS "avg_sentiment"
+      FROM "Articles" as a inner join "ArticlesSentiment" as als
+      ON a.id = als."articleId"
     `;
+    console.log(articlesWeeklyStats);
     const positiveTrendArticles = 
       ((Number(articlesWeeklyStats[0].currentWeekPositive) -
         Number(articlesWeeklyStats[0].previousWeekPositive)) *
@@ -83,7 +86,7 @@ FROM "Articles";`;
     });
   } catch (e: any) {
     logger.error("Error in fetching the dashboard Analytics", {
-      id: req.user.id,
+      id: req.user?.id,
       error: e.message,
     });
     res
@@ -94,38 +97,42 @@ FROM "Articles";`;
 export const TrendingStartups = async (req: Request, res: Response) => {
   //get 4 startups with more articles in the present week
   try {
-    const startupsWithMaxCount:
-      | {
-          startupId: string;
-          name: string;
-          percentage_change: number;
-          current_sentiment: number;
-        }[]
-      | null = await prisma.$queryRaw`
-  WITH top_startups AS (
-    SELECT COUNT(*) AS "articlesCount", "startupId" FROM "Articles"
-    WHERE "publishedAt" >= CURRENT_DATE - INTERVAL '7 day'
-    GROUP BY "startupId" ORDER BY "articlesCount" DESC
-    LIMIT 4
-),
-sentiment_overall_trends AS (
-    select
-    "startupId",
-    AVG("sentimentScores") AS current_sentiment,
-    coalesce(AVG(CASE WHEN "publishedAt" <= CURRENT_DATE - INTERVAL '7 day' THEN "sentimentScores" END),0) AS previous_sentiment
-    from "Articles"
-    WHERE "startupId" IN (SELECT "startupId" FROM "top_startups")
-    group by "startupId" 
-)
-select 
-    s."startupId",
-    st."name",
-    round(cast(s."current_sentiment" as NUMERIC),3) as "current_sentiment",
-    cast((((s.current_sentiment+1) - (s.previous_sentiment+1)) * 100.0) / coalesce(NULLIF(s.previous_sentiment, 0),1) as INT) AS "percentage_change"
-    from "sentiment_overall_trends" as "s" inner join "Startups" st on s."startupId"=st."id"
-    order by  "percentage_change" desc
-  `;
-    if (!startupsWithMaxCount) {
+    const trendingStartups:any[] = await prisma.$queryRawUnsafe(`
+      WITH StartupStats AS (
+        SELECT
+          s.id,
+          s.name,
+          -- Count articles published within the last 7 days
+          COUNT(CASE WHEN a."publishedAt" >= CURRENT_DATE - INTERVAL '7 day' THEN 1 END) AS current_week_article_count,
+          -- Calculate the overall average sentiment score across ALL linked articles
+          -- AVG ignores NULLs automatically. COALESCE handles startups with 0 articles/scores.
+          COALESCE(AVG(als."sentimentScore"), 0.0) AS overall_avg_sentiment
+        FROM
+          "Startups" s
+        -- LEFT JOIN ensures startups with 0 articles are still considered (count will be 0)
+        LEFT JOIN
+          "ArticlesSentiment" als ON s.id = als."startupId"
+        LEFT JOIN
+          "Articles" a ON als."articleId" = a.id
+        GROUP BY
+          s.id, s.name -- Group by startup to aggregate counts and averages
+      )
+      -- Select the final results from the calculated stats
+      SELECT
+        id,
+        name,
+        current_week_article_count,
+        overall_avg_sentiment
+      FROM
+        StartupStats
+      -- Order by the count of articles from the current week to find the 'trending' ones
+      ORDER BY
+        current_week_article_count DESC NULLS LAST -- Highest count first, treat NULLs (shouldn't happen) as lowest
+      LIMIT 4; -- Get only the top 4
+    `);
+
+    // Raw queries can return BigInt for counts, convert them to Number
+    if (!trendingStartups) {
       logger.error("Error in fetching the dashboard Analytics", {
         id: req?.user?.id,
         error: "Unable to fetch dashboard analytics due to sql query error",
@@ -134,7 +141,18 @@ select
         .status(404)
         .json({ error: "This was a server error in fetching stats" });
     }
-    res.status(200).json({ trendingStartups: startupsWithMaxCount });
+    // The result might contain BigInt for counts, convert them if necessary
+
+    const formattedResults = trendingStartups.map(startup => ({
+      id: startup.id,
+      name: startup.name,
+      currentWeekArticleCount: Number(startup.current_week_article_count),
+      // Round the average sentiment for cleaner display
+      current_sentiment: parseFloat(startup.overall_avg_sentiment.toFixed(3))
+    }));
+
+   
+    res.status(200).json({ trendingStartups: formattedResults });
   } catch (e: any) {
     logger.error("Error in fetching the dashboard Analytics", {
       id: req?.user?.id,

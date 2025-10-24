@@ -1,9 +1,8 @@
 import { Request, Response } from "express";
 import { searchQueryType } from "../types/zod/types";
-import {  prisma } from "../config/prisma";
+import { prisma } from "../config/prisma";
 import logger from "../lib/logger";
 import { Prisma } from "@prisma/client";
-
 
 // Define a type for the result to improve type safety
 interface StartupWithStats {
@@ -64,7 +63,7 @@ export const search = async (req: Request, res: Response) => {
   // CRITICAL FIX: The offset calculation was incorrect. It should be (page - 1) * limit.
   const offset = (pageNumber - 1) * itemsLength;
   console.log(sentimentScoreLimit);
-  const conditions:Prisma.Sql [] = [];
+  const conditions: Prisma.Sql[] = [];
   if (searchQuery) {
     conditions.push(Prisma.sql`s.name ILIKE ${`%${searchQuery}%`}`);
   }
@@ -73,18 +72,18 @@ export const search = async (req: Request, res: Response) => {
   }
   if (sentimentScoreLimit !== undefined) {
     conditions.push(
-      Prisma.sql`stats.avg_sentiment_score >= ${Number(sentimentScoreLimit)}`
+      Prisma.sql`coalesce(st.avg_sentiment_score,0) >= -1`
     );
   }
   if (sentiment) {
     if (sentiment === "positive")
-      conditions.push(Prisma.sql`stats.avg_sentiment_score > .01`);
+      conditions.push(Prisma.sql`st.avg_sentiment_score > .01`);
     if (sentiment === "negative")
-      conditions.push(Prisma.sql`stats.avg_sentiment_score < -0.01`);
+      conditions.push(Prisma.sql`st.avg_sentiment_score < -0.01`);
     // A slightly cleaner way to write the neutral condition
     if (sentiment === "neutral")
       conditions.push(
-        Prisma.sql`stats.avg_sentiment_score BETWEEN -0.01 AND 0.01`
+        Prisma.sql`st.avg_sentiment_score BETWEEN -0.01 AND 0.01`
       );
   }
 
@@ -94,123 +93,26 @@ export const search = async (req: Request, res: Response) => {
       : "";
   try {
     // --- The Single, Optimized Query ---
-    const results = await prisma.$queryRaw<StartupWithStats[]>`
-    WITH StartupStats AS (
-      SELECT
-        "startupId",
-        COUNT(*) AS total_articles,
-        AVG("sentimentScores") AS avg_sentiment_score
-      FROM "Articles"
-      GROUP BY "startupId"
-    ),
-    -- 1. MODIFIED CTE: Rank all articles and limit to 3 per startup (optional, but cleaner)
-    RankedArticles AS (
-      SELECT
-        id, title, url, content, "publishedAt", "startupId","sentimentScores", sentiment,
-        ROW_NUMBER() OVER(PARTITION BY "startupId" ORDER BY "publishedAt" DESC) as rn
-      FROM "Articles"
+    const results:any[] = await prisma.$queryRaw`
+    with stats as (
+      select "startupId" , 
+      coalesce(avg("sentimentScore"),0.0) as "avg_sentiment_score", 
+      coalesce(cast(count(*) as INT),0) as "total_articles"
+      from "ArticlesSentiment" 
+      group by  "startupId"
     )
-    SELECT
-      s.id,
-      s.name,
-      s.sector,
-      stats.total_articles,
-      stats.avg_sentiment_score,
-      -- 2. NEW COLUMNS: Select the latest articles separately
-      a1.title AS latest_article_1_title,
-      a1.url AS latest_article_1_url,
-      a1.content AS latest_article_1_content,
-      a1."publishedAt" AS latest_article_1_published_at,
-      a1."sentimentScores" AS latest_article_1_sentiment_score,
-      a1.sentiment AS latest_article_1_sentiment,
+    select s.id, s.name, s.sector, s."imageUrl",s.description, COALESCE(st."avg_sentiment_score", 0) AS "avg_sentiment_score", 
+    COALESCE(st."total_articles", 0) AS "total_articles" from "Startups" s
+    left join "stats" st on s.id = st."startupId"
 
-      a2.title AS latest_article_2_title,
-      a2.url AS latest_article_2_url,
-      a2.content AS latest_article_2_content,
-      a2."publishedAt" AS latest_article_2_published_at,
-      a2."sentimentScores" AS latest_article_2_sentiment_score,
-      a2.sentiment AS latest_article_2_sentiment,
-      
-      a3.title AS latest_article_3_title,
-      a3.url AS latest_article_3_url,
-      a3.content AS latest_article_3_content,
-      a3."publishedAt" AS latest_article_3_published_at,
-      a3."sentimentScores" AS latest_article_3_sentiment_score,
-      a3.sentiment AS latest_article_3_sentiment,
-
-      -- Get the total count before pagination
-      COUNT(s.id) OVER() as total_count
-    FROM "Startups" s
-    LEFT JOIN StartupStats stats ON s.id = stats."startupId"
-    
-    -- 3. KEY MODIFICATION: Join RankedArticles three times for rn = 1, 2, and 3
-    LEFT JOIN RankedArticles a1 ON s.id = a1."startupId" AND a1.rn = 1
-    LEFT JOIN RankedArticles a2 ON s.id = a2."startupId" AND a2.rn = 2
-    LEFT JOIN RankedArticles a3 ON s.id = a3."startupId" AND a3.rn = 3
-    
     ${whereClause}
-    ORDER BY a1."publishedAt" DESC
     LIMIT ${itemsLength}
     OFFSET ${offset}
   `;
     // Extract the total count from the first result row. If no results, count is 0.
-    const formattedResults = results.map(
-      ({
-        latest_article_1_content,
-        latest_article_1_published_at,
-        latest_article_1_title,
-        latest_article_1_url,
-        latest_article_2_content,
-        latest_article_2_published_at,
-        latest_article_2_title,
-        latest_article_2_url,
-        latest_article_3_content,
-        latest_article_3_published_at,
-        latest_article_3_title,
-        latest_article_3_url,
-        ...result
-      }) => ({
-        ...result,
-        latestArticles: [
-          {
-            title: latest_article_1_title,
-            url: latest_article_1_url,
-            content: latest_article_1_content,
-            publishedAt: latest_article_1_published_at,
-            sentimentScore: result.latest_article_1_sentiment_score,
-            sentiment: result.latest_article_1_sentiment,
-          },
-          {
-            title: latest_article_2_title,
-            url: latest_article_2_url,
-            content: latest_article_2_content,
-            publishedAt: latest_article_2_published_at,
-            sentimentScore: result.latest_article_2_sentiment_score,
-            sentiment: result.latest_article_2_sentiment,
-          },
-          {
-            title: latest_article_3_title,
-            url: latest_article_3_url,
-            content: latest_article_3_content,
-            publishedAt: latest_article_3_published_at,
-            sentimentScore: result.latest_article_3_sentiment_score,
-            sentiment: result.latest_article_3_sentiment,
-          },
-        ],
-      })
-    );
-    const totalCount =
-      formattedResults.length > 0 ? Number(results[0].total_count) : 0;
-    // const top2Articles=[{title:results}]
-    // We need to remove the 'total_count' property from the final data sent to the client.
-    const startups: StartupResult[] = formattedResults.map(
-      ({ total_count, total_articles, ...rest }) => ({
-        ...rest,
-        total_articles: total_articles ? Number(total_articles) : null,
-      })
-    );
+    const totalCount = await prisma.startups.count();
     res.status(200).json({
-      startups: startups,
+      startups: results,
       meta: {
         total: totalCount,
         page: pageNumber,
