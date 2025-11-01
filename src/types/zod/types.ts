@@ -15,7 +15,8 @@ export const searchQuery=z.object({
     sentimentScoreLimit:z.string().optional(),
     page:z.string().optional(),
     limit:z.string().optional(),
-    searchQuery:z.string().optional()
+    searchQuery:z.string().optional(),
+    
 })
 export type searchQueryType=z.infer<typeof searchQuery>
 export  type signUpBodyType=z.infer<typeof signupBodySchema>

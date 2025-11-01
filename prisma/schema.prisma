@@ -20,7 +20,7 @@ model User {
 model Articles {
   id                String              @id @default(uuid())
   title             String
-  content           String
+  content           String @db.VarChar()
   publishedAt       DateTime
   url               String?
   createdAt         DateTime            @default(now())
@@ -30,21 +30,28 @@ model Articles {
 model Startups {
   id                String              @id @default(uuid())
   name              String
-  sector            String
+  sector            Sector @relation("Company Sectors", references: [id],fields: [sectorId])
+  sectorId          Int
   findingKeywords   String[]
   description       String?
   createdAt         DateTime            @default(now())
   imageUrl          String?
   ArticlesSentiment ArticlesSentiment[]
 }
-
+model Sector{
+  id Int @id @default(autoincrement())
+  name String
+  companiesLinked Startups[] @relation("Company Sectors")
+}
 model ArticlesSentiment {
   id             String   @id
   articleId      String
   startupId      String
   createdAt      DateTime @default(now())
   sentiment      String?
-  sentimentScore Float?
+  positiveScore Float?
+  negativeScore Float?
+  neutralScore  Float?
   Articles       Articles @relation(fields: [articleId], references: [id])
   Startups       Startups @relation(fields: [startupId], references: [id])
 

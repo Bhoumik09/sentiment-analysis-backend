@@ -17,6 +17,7 @@ export const dashBoardAnalytics = async (req: Request, res: Response) => {
   COUNT(CASE WHEN sentiment = 'neutral' THEN 1 END)*1 as "Neutral",
   count(*) as "totalArticles"
 FROM "ArticlesSentiment";`;
+    console.log(totalArticles);
     const statusGrouping = totalArticles.map((articles) => ({
       postiveCount: Number(articles.Positive),
       negativeCount: Number(articles.Negative),
@@ -37,7 +38,7 @@ FROM "ArticlesSentiment";`;
     const monthIncDecStats =
       Number(monthCompare[0].currentMonthCount) -
       Number(monthCompare[0].previousMonthCount);
-    console.log(monthIncDecStats)
+    console.log(monthIncDecStats);
 
     //get previous and current week trends for comparison
     const articlesWeeklyStats: {
@@ -45,35 +46,33 @@ FROM "ArticlesSentiment";`;
       currentWeekNegative: bigint;
       previousWeekPositive: bigint;
       previousWeekNegative: bigint;
-      avg_sentiment:bigint;
+      avg_sentiment: bigint;
     }[] = await prisma.$queryRaw`
       SELECT
         COUNT(*) FILTER (WHERE als.sentiment = 'positive' AND date_trunc('week', a."publishedAt") <= date_trunc('week', NOW())) AS "currentWeekPositive",
         COUNT(*) FILTER (WHERE als.sentiment = 'negative' AND date_trunc('week', a."publishedAt") <= date_trunc('week', NOW())) AS "currentWeekNegative",
         COUNT(*) FILTER (WHERE als.sentiment = 'positive' AND date_trunc('week', a."publishedAt") <= date_trunc('week', NOW() - interval '1 week')) AS "previousWeekPositive",
         COUNT(*) FILTER (WHERE als.sentiment = 'negative' AND date_trunc('week', a."publishedAt") <= date_trunc('week', NOW() - interval '1 week')) AS "previousWeekNegative",
-        AVG(als."sentimentScore") AS "avg_sentiment"
+        AVG(als."positiveScore"-als."negativeScore") AS "avg_sentiment"
       FROM "Articles" as a inner join "ArticlesSentiment" as als
       ON a.id = als."articleId"
     `;
     console.log(articlesWeeklyStats);
-    const positiveTrendArticles = 
+    const positiveTrendArticles =
       ((Number(articlesWeeklyStats[0].currentWeekPositive) -
         Number(articlesWeeklyStats[0].previousWeekPositive)) *
         100) /
-        (Number(articlesWeeklyStats[0].previousWeekPositive) === 0
-          ? 1
-          : Number(articlesWeeklyStats[0].previousWeekPositive))
-    ;
-    const negativeTrendArticles = 
+      (Number(articlesWeeklyStats[0].previousWeekPositive) === 0
+        ? 1
+        : Number(articlesWeeklyStats[0].previousWeekPositive));
+    const negativeTrendArticles =
       ((Number(articlesWeeklyStats[0].currentWeekNegative) -
         Number(articlesWeeklyStats[0].previousWeekNegative)) *
         100) /
-        (Number(articlesWeeklyStats[0].previousWeekNegative) === 0
-          ? 1
-          : Number(articlesWeeklyStats[0].previousWeekNegative))
-    ;
-    const neutralTrendArticles = Number(articlesWeeklyStats[0].avg_sentiment)
+      (Number(articlesWeeklyStats[0].previousWeekNegative) === 0
+        ? 1
+        : Number(articlesWeeklyStats[0].previousWeekNegative));
+    const neutralTrendArticles = Number(articlesWeeklyStats[0].avg_sentiment);
     res.status(200).json({
       statsResult: {
         totalStartups,
@@ -81,7 +80,7 @@ FROM "ArticlesSentiment";`;
         startUpAnalytics: monthIncDecStats,
         positiveTrendArticles,
         negativeTrendArticles,
-        avgSentiment:neutralTrendArticles
+        avgSentiment: neutralTrendArticles,
       },
     });
   } catch (e: any) {
@@ -97,7 +96,7 @@ FROM "ArticlesSentiment";`;
 export const TrendingStartups = async (req: Request, res: Response) => {
   //get 4 startups with more articles in the present week
   try {
-    const trendingStartups:any[] = await prisma.$queryRawUnsafe(`
+    const trendingStartups: any[] = await prisma.$queryRawUnsafe(`
       WITH StartupStats AS (
         SELECT
           s.id,
@@ -106,7 +105,7 @@ export const TrendingStartups = async (req: Request, res: Response) => {
           COUNT(CASE WHEN a."publishedAt" >= CURRENT_DATE - INTERVAL '7 day' THEN 1 END) AS current_week_article_count,
           -- Calculate the overall average sentiment score across ALL linked articles
           -- AVG ignores NULLs automatically. COALESCE handles startups with 0 articles/scores.
-          COALESCE(AVG(als."sentimentScore"), 0.0) AS overall_avg_sentiment
+          COALESCE(AVG(als."positiveScore"- als."negativeScore"), 0.0) AS overall_avg_sentiment
         FROM
           "Startups" s
         -- LEFT JOIN ensures startups with 0 articles are still considered (count will be 0)
@@ -143,15 +142,14 @@ export const TrendingStartups = async (req: Request, res: Response) => {
     }
     // The result might contain BigInt for counts, convert them if necessary
 
-    const formattedResults = trendingStartups.map(startup => ({
+    const formattedResults = trendingStartups.map((startup) => ({
       id: startup.id,
       name: startup.name,
       currentWeekArticleCount: Number(startup.current_week_article_count),
       // Round the average sentiment for cleaner display
-      current_sentiment: parseFloat(startup.overall_avg_sentiment.toFixed(3))
+      current_sentiment: parseFloat(startup.overall_avg_sentiment.toFixed(3)),
     }));
 
-   
     res.status(200).json({ trendingStartups: formattedResults });
   } catch (e: any) {
     logger.error("Error in fetching the dashboard Analytics", {

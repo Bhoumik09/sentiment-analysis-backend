@@ -63,11 +63,20 @@ export const companyInformation = async (req: Request, res: Response) => {
     const companyInfo: {
       id: string;
       name: string;
-      sector: string;
+      sector: {
+        name: string;
+      }
       description: string | null;
     } | null = await prisma.startups.findUnique({
       where: {
         id: companyId,
+      },
+      include:{
+        sector:{
+          select:{
+            name:true
+          }
+        }
       },
       omit: {
         createdAt: true,
@@ -143,7 +152,7 @@ export const recentNewsOfCompany = async (req: Request, res: Response) => {
       sentiment:string
     }[] = await prisma.articles.findMany({
       where:{
-        startupId:companyId
+        
       },
       orderBy:{
         publishedAt:"desc"

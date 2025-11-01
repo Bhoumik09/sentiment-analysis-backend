@@ -1,6 +1,7 @@
 import express from 'express'
 import { verifyTokenLogin } from '../middlewares/authMiddleware';
-import { search } from '../controllers/searchController';
+import { getPaginatedCompanies, getPaginatedNews, } from '../controllers/searchController';
 const searchRouter = express.Router();
-searchRouter.get('/fetch-data',verifyTokenLogin, search)
+searchRouter.get('/fetch-company-data',verifyTokenLogin, getPaginatedCompanies)
+searchRouter.get('/fetch-news-data', getPaginatedNews)
 export default searchRouter;
