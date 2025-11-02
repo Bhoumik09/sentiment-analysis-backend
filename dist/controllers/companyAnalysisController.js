@@ -66,6 +66,13 @@ const companyInformation = (req, res) => __awaiter(void 0, void 0, void 0, funct
             where: {
                 id: companyId,
             },
+            include: {
+                sector: {
+                    select: {
+                        name: true
+                    }
+                }
+            },
             omit: {
                 createdAt: true,
                 findingKeywords: true,
@@ -123,26 +130,32 @@ const recentNewsOfCompany = (req, res) => __awaiter(void 0, void 0, void 0, func
     try {
         const id = req.params;
         const companyId = id.companyId;
-        const companyInfo = yield prisma_1.prisma.articles.findMany({
-            where: {
-                startupId: companyId
-            },
-            orderBy: {
-                publishedAt: "desc"
-            },
-            take: 5,
-            select: {
-                title: true,
-                url: true,
-                content: true,
-                publishedAt: true,
-                sentimentScores: true,
-                sentiment: true
-            }
-        });
+        // const companyInfo:{
+        //   title:string,
+        //   url:string|null,
+        //   content:string,
+        //   publishedAt:Date,
+        //   sentimentScores:number|null,
+        //   sentiment:string
+        // }[] = await prisma.articles.findMany({
+        //   where:{
+        //   },
+        //   orderBy:{
+        //     publishedAt:"desc"
+        //   },
+        //   take:5, 
+        //   select:{
+        //     title:true,
+        //     url:true,
+        //     content:true,
+        //     publishedAt:true,
+        //     // sentimentScores:true,
+        //     sentiment:true
+        //   }
+        // })
         // const for
         res.status(200).json({
-            recentNews: companyInfo
+            recentNews: ""
         });
     }
     catch (error) {

@@ -143,34 +143,34 @@ export const recentNewsOfCompany = async (req: Request, res: Response) => {
     const id = req.params as { companyId: string };
     const companyId = id.companyId;
 
-    const companyInfo:{
-      title:string,
-      url:string|null,
-      content:string,
-      publishedAt:Date,
-      sentimentScores:number|null,
-      sentiment:string
-    }[] = await prisma.articles.findMany({
-      where:{
+    // const companyInfo:{
+    //   title:string,
+    //   url:string|null,
+    //   content:string,
+    //   publishedAt:Date,
+    //   sentimentScores:number|null,
+    //   sentiment:string
+    // }[] = await prisma.articles.findMany({
+    //   where:{
         
-      },
-      orderBy:{
-        publishedAt:"desc"
-      },
-      take:5, 
-      select:{
-        title:true,
-        url:true,
-        content:true,
-        publishedAt:true,
-        sentimentScores:true,
-        sentiment:true
-      }
-    })
+    //   },
+    //   orderBy:{
+    //     publishedAt:"desc"
+    //   },
+    //   take:5, 
+    //   select:{
+    //     title:true,
+    //     url:true,
+    //     content:true,
+    //     publishedAt:true,
+    //     // sentimentScores:true,
+    //     sentiment:true
+    //   }
+    // })
 
     // const for
     res.status(200).json({
-        recentNews: companyInfo
+        recentNews: ""
     });
   } catch (error: any) {
     logger.error("There was an error in fetching company's recent news", {

@@ -7,6 +7,7 @@ const express_1 = __importDefault(require("express"));
 const authMiddleware_1 = require("../middlewares/authMiddleware");
 const searchController_1 = require("../controllers/searchController");
 const searchRouter = express_1.default.Router();
-searchRouter.get('/fetch-data', authMiddleware_1.verifyTokenLogin, searchController_1.search);
+searchRouter.get('/fetch-company-data', authMiddleware_1.verifyTokenLogin, searchController_1.getPaginatedCompanies);
+searchRouter.get('/fetch-news-data', authMiddleware_1.verifyTokenLogin, searchController_1.getPaginatedNews);
 exports.default = searchRouter;
 //# sourceMappingURL=searchRoutes.js.map
