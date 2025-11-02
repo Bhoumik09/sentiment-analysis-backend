@@ -115,6 +115,7 @@ export const fetchUser = async (req: Request, res: Response) => {
       id: string;
       email: string;
       name: string;
+      roleId:number;
     } | null = await prisma.user.findUnique({
       where: { id: req.user.id },
       omit: { password: true },

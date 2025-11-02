@@ -132,7 +132,7 @@ const countResult: [{ totalCount: bigint }] = await prisma.$queryRaw`
 
 // 3. Extract the count (and convert from BigInt)
 const totalCount: number = Number(countResult[0].totalCount);
-
+console.log(totalCount)
     res.status(200).json({
       startups: results,
       meta: {
