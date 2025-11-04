@@ -17,8 +17,8 @@ const prisma_1 = require("../config/prisma");
 const logger_1 = __importDefault(require("../lib/logger"));
 const dashBoardAnalytics = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
-    //get startup count
     try {
+        //get startup count
         const totalStartups = yield prisma_1.prisma.startups.count();
         //get articles count based on sentiment
         const totalArticles = yield prisma_1.prisma.$queryRaw `SELECT
@@ -27,7 +27,7 @@ const dashBoardAnalytics = (req, res) => __awaiter(void 0, void 0, void 0, funct
   COUNT(CASE WHEN sentiment = 'neutral' THEN 1 END)*1 as "Neutral",
   count(*) as "totalArticles"
 FROM "ArticlesSentiment";`;
-        console.log(totalArticles);
+        //group the stats data together
         const statusGrouping = totalArticles.map((articles) => ({
             postiveCount: Number(articles.Positive),
             negativeCount: Number(articles.Negative),
@@ -43,7 +43,6 @@ FROM "ArticlesSentiment";`;
     `;
         const monthIncDecStats = Number(monthCompare[0].currentMonthCount) -
             Number(monthCompare[0].previousMonthCount);
-        console.log(monthIncDecStats);
         //get previous and current week trends for comparison
         const articlesWeeklyStats = yield prisma_1.prisma.$queryRaw `
       SELECT
@@ -55,7 +54,6 @@ FROM "ArticlesSentiment";`;
       FROM "Articles" as a inner join "ArticlesSentiment" as als
       ON a.id = als."articleId"
     `;
-        console.log(articlesWeeklyStats);
         const positiveTrendArticles = ((Number(articlesWeeklyStats[0].currentWeekPositive) -
             Number(articlesWeeklyStats[0].previousWeekPositive)) *
             100) /

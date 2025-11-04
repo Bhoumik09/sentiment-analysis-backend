@@ -1,53 +1,57 @@
 import { Request, Response } from "express";
 import { prisma } from "../config/prisma";
 import logger from "../lib/logger";
-export const dashBoardAnalytics = async (req: Request, res: Response) => {
-  //get startup count
+export const dashBoardAnalytics = async (req: Request, res: Response):Promise<void> => {
   try {
-    const totalStartups = await prisma.startups.count();
+      //get startup count
+    const totalStartups:number = await prisma.startups.count();
     //get articles count based on sentiment
-    const totalArticles: {
+    const totalArticles  = await prisma.$queryRaw<{
       Positive: bigint;
       Negative: bigint;
       Neutral: bigint;
       totalArticles: bigint;
-    }[] = await prisma.$queryRaw`SELECT
+    }[]>`SELECT
   COUNT(CASE WHEN sentiment = 'positive' THEN 1 END)*1 as "Positive",
   COUNT(CASE WHEN sentiment = 'negative' THEN 1 END)*1 as "Negative",
   COUNT(CASE WHEN sentiment = 'neutral' THEN 1 END)*1 as "Neutral",
   count(*) as "totalArticles"
 FROM "ArticlesSentiment";`;
-    console.log(totalArticles);
-    const statusGrouping = totalArticles.map((articles) => ({
+    //group the stats data together
+    const statusGrouping:{
+      postiveCount: number;
+      negativeCount: number;
+      neutralCount:number;
+      totalCount: number;
+    } = totalArticles.map((articles) => ({
       postiveCount: Number(articles.Positive),
       negativeCount: Number(articles.Negative),
       neutralCount: Number(articles.Neutral),
       totalCount: Number(articles.totalArticles),
     }))[0];
     //compare total startup count to last month
-    const monthCompare: {
+    const monthCompare  = await prisma.$queryRaw<{
       currentMonthCount: bigint;
       previousMonthCount: bigint;
-    }[] = await prisma.$queryRaw`
+    }[]>`
     SELECT
     COUNT(*) FILTER (WHERE date_trunc('month', "createdAt") <= date_trunc('month', NOW())) AS "currentMonthCount",
     COUNT(*) FILTER (WHERE date_trunc('month', "createdAt") <= date_trunc('month', NOW() - interval '1 month')) AS "previousMonthCount"
     FROM "Startups";
     `;
 
-    const monthIncDecStats =
+    const monthIncDecStats:number =
       Number(monthCompare[0].currentMonthCount) -
       Number(monthCompare[0].previousMonthCount);
-    console.log(monthIncDecStats);
 
     //get previous and current week trends for comparison
-    const articlesWeeklyStats: {
+    const articlesWeeklyStats = await prisma.$queryRaw<{
       currentWeekPositive: bigint;
       currentWeekNegative: bigint;
       previousWeekPositive: bigint;
       previousWeekNegative: bigint;
       avg_sentiment: bigint;
-    }[] = await prisma.$queryRaw`
+    }[]>`
       SELECT
         COUNT(*) FILTER (WHERE als.sentiment = 'positive' AND date_trunc('week', a."publishedAt") <= date_trunc('week', NOW())) AS "currentWeekPositive",
         COUNT(*) FILTER (WHERE als.sentiment = 'negative' AND date_trunc('week', a."publishedAt") <= date_trunc('week', NOW())) AS "currentWeekNegative",
@@ -57,22 +61,21 @@ FROM "ArticlesSentiment";`;
       FROM "Articles" as a inner join "ArticlesSentiment" as als
       ON a.id = als."articleId"
     `;
-    console.log(articlesWeeklyStats);
-    const positiveTrendArticles =
+    const positiveTrendArticles:number =
       ((Number(articlesWeeklyStats[0].currentWeekPositive) -
         Number(articlesWeeklyStats[0].previousWeekPositive)) *
         100) /
       (Number(articlesWeeklyStats[0].previousWeekPositive) === 0
         ? 1
         : Number(articlesWeeklyStats[0].previousWeekPositive));
-    const negativeTrendArticles =
+    const negativeTrendArticles:number =
       ((Number(articlesWeeklyStats[0].currentWeekNegative) -
         Number(articlesWeeklyStats[0].previousWeekNegative)) *
         100) /
       (Number(articlesWeeklyStats[0].previousWeekNegative) === 0
         ? 1
         : Number(articlesWeeklyStats[0].previousWeekNegative));
-    const neutralTrendArticles = Number(articlesWeeklyStats[0].avg_sentiment);
+    const neutralTrendArticles:number = Number(articlesWeeklyStats[0].avg_sentiment);
     res.status(200).json({
       statsResult: {
         totalStartups,
@@ -93,10 +96,10 @@ FROM "ArticlesSentiment";`;
       .json({ error: "This was a server error in fetching stats" });
   }
 };
-export const TrendingStartups = async (req: Request, res: Response) => {
+export const TrendingStartups = async (req: Request, res: Response):Promise<void> => {
   //get 4 startups with more articles in the present week
   try {
-    const trendingStartups: any[] = await prisma.$queryRawUnsafe(`
+    const trendingStartups  = await prisma.$queryRawUnsafe<{id:string;name:string;current_week_article_count:bigint; overall_avg_sentiment:number}[]>(`
       WITH StartupStats AS (
         SELECT
           s.id,
@@ -129,7 +132,6 @@ export const TrendingStartups = async (req: Request, res: Response) => {
         current_week_article_count DESC NULLS LAST -- Highest count first, treat NULLs (shouldn't happen) as lowest
       LIMIT 4; -- Get only the top 4
     `);
-
     // Raw queries can return BigInt for counts, convert them to Number
     if (!trendingStartups) {
       logger.error("Error in fetching the dashboard Analytics", {
@@ -142,7 +144,12 @@ export const TrendingStartups = async (req: Request, res: Response) => {
     }
     // The result might contain BigInt for counts, convert them if necessary
 
-    const formattedResults = trendingStartups.map((startup) => ({
+    const formattedResults:{
+      id: string;
+      name: string;
+      currentWeekArticleCount: number;
+      current_sentiment: number;
+    }[] = trendingStartups.map((startup) => ({
       id: startup.id,
       name: startup.name,
       currentWeekArticleCount: Number(startup.current_week_article_count),

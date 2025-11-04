@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.verifyTokenLogin = void 0;
+exports.authorizedRoles = exports.verifyTokenLogin = void 0;
 const logger_1 = __importDefault(require("../lib/logger"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const constants_1 = require("../lib/constants");
@@ -39,4 +39,21 @@ const verifyTokenLogin = (req, res, next) => {
     }
 };
 exports.verifyTokenLogin = verifyTokenLogin;
+const authorizedRoles = (...roles) => {
+    return (req, res, next) => {
+        var _a;
+        const userRole = req.user.roleId;
+        if (roles.includes(userRole)) {
+            next();
+            return;
+        }
+        logger_1.default.error("Error occurred while validating the Autherization of the role", {
+            id: (_a = req.user) === null || _a === void 0 ? void 0 : _a.id,
+            error: "User is not authorized to access this route"
+        });
+        res.status(409).json({ msg: "Unauthorized to access the Data" });
+        return;
+    };
+};
+exports.authorizedRoles = authorizedRoles;
 //# sourceMappingURL=authMiddleware.js.map

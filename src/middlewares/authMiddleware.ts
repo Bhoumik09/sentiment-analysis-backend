@@ -36,3 +36,18 @@ export const verifyTokenLogin = (
     res.status(401).json({ msg: "Token is not valid" });
   }
 };
+export const authorizedRoles=(...roles:number[])=>{
+  return(req:Request, res:Response,next:NextFunction)=>{
+    const userRole=req.user.roleId;
+    if(roles.includes(userRole)){
+      next();
+      return;
+    }
+    logger.error("Error occurred while validating the Autherization of the role", {
+      id: req.user?.id,
+      error:"User is not authorized to access this route"
+    });
+    res.status(409).json({ msg: "Unauthorized to access the Data" });
+    return;
+  }
+}

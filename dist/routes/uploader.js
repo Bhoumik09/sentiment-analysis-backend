@@ -7,7 +7,7 @@ const express_1 = __importDefault(require("express"));
 const authMiddleware_1 = require("../middlewares/authMiddleware");
 const uploader_1 = require("../controllers/uploader");
 const fetcherRouter = express_1.default.Router();
-fetcherRouter.get('/fetch-all-startups', authMiddleware_1.verifyTokenLogin, uploader_1.getAllStartups);
-fetcherRouter.patch('/upload-image/:startupId', authMiddleware_1.verifyTokenLogin, uploader_1.uploadStartupsImage);
+fetcherRouter.get('/fetch-all-startups', authMiddleware_1.verifyTokenLogin, (0, authMiddleware_1.authorizedRoles)(2), uploader_1.getAllStartups);
+fetcherRouter.patch('/upload-image/:startupId', authMiddleware_1.verifyTokenLogin, (0, authMiddleware_1.authorizedRoles)(2), uploader_1.uploadStartupsImage);
 exports.default = fetcherRouter;
 //# sourceMappingURL=uploader.js.map
