@@ -12,39 +12,28 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.companyAnalysisTrend = exports.recentNewsOfCompany = exports.sentimentTrendOverPeriod = exports.companyInformation = exports.companySentimentInfo = void 0;
+exports.companyAnalysisTrend = exports.sentimentTrendOverPeriod = exports.getSectorSentimentTrends = exports.companyInformation = exports.companySentimentInfo = void 0;
 const prisma_1 = require("../config/prisma");
 const logger_1 = __importDefault(require("../lib/logger"));
+const client_1 = require("@prisma/client");
 const companySentimentInfo = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     try {
-        const id = req.params;
-        const companyId = id.companyId;
-        const companyInfo = yield prisma_1.prisma.$queryRaw `
-        
- with companyArticlesInfo AS (
-    SELECT 
-        COUNT(CASE WHEN sentiment = 'positive' THEN 1 END)*1 AS "positiveCount",
-        COUNT(CASE WHEN sentiment = 'negative' THEN 1 END)*1 AS "negativeCount",
-        COUNT(CASE WHEN sentiment = 'neutral'  THEN 1 END)*1 AS "neutralCount",
-        count(*)*1 AS "totalArticles",
-        avg("sentimentScores") AS "averageSentimentScore"
-    FROM 
-        "Articles" 
-    WHERE 
-        "startupId" = ${companyId}
-)
-SELECT 
-   *
-FROM 
-    companyArticlesInfo AS ca;
-    `;
-        console.log(companyInfo);
-        const companyFinalObj = companyInfo.map((info) => (Object.assign(Object.assign({}, info), { totalArticles: Number(info.totalArticles), positiveCount: Number(info.positiveCount), negativeCount: Number(info.negativeCount), neutralCount: Number(info.neutralCount) })))[0];
-        // const for
-        res.status(200).json({
-            companyInfo: companyFinalObj,
-        });
+        const { companyId } = req.params;
+        const sentimentStats = (yield prisma_1.prisma.articlesSentiment.groupBy({
+            by: ["sentiment"],
+            where: {
+                startupId: companyId,
+            },
+            _count: {
+                articleId: true,
+            },
+        }));
+        const formattedResults = sentimentStats.map((sentiment) => ({
+            sentiment: sentiment.sentiment,
+            sentimentCount: sentiment._count.articleId,
+        }));
+        res.status(200).json({ sentimentStats: formattedResults });
     }
     catch (error) {
         logger_1.default.error("There was an error in fetching company's details", {
@@ -58,35 +47,55 @@ FROM
 });
 exports.companySentimentInfo = companySentimentInfo;
 const companyInformation = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a;
+    var _a, _b, _c, _d;
     try {
         const id = req.params;
         const companyId = id.companyId;
-        const companyInfo = yield prisma_1.prisma.startups.findUnique({
+        const companyInfoQuery = prisma_1.prisma.startups.findUnique({
             where: {
                 id: companyId,
             },
             include: {
                 sector: {
                     select: {
-                        name: true
-                    }
-                }
+                        name: true,
+                        id: true,
+                    },
+                },
             },
             omit: {
                 createdAt: true,
                 findingKeywords: true,
             },
         });
-        // const for
-        console.log(companyInfo);
+        const companyAvgSentimentQuery = prisma_1.prisma.articlesSentiment.aggregate({
+            _sum: {
+                positiveScore: true,
+                negativeScore: true,
+            },
+            _count: {
+                _all: true,
+            },
+            where: {
+                startupId: companyId,
+            },
+        });
+        const [companyInfo, companyAvgSentiment] = yield Promise.all([
+            companyInfoQuery,
+            companyAvgSentimentQuery,
+        ]);
+        const count = (_a = companyAvgSentiment._count._all) !== null && _a !== void 0 ? _a : 0;
+        const totalPositive = (_b = companyAvgSentiment._sum.positiveScore) !== null && _b !== void 0 ? _b : 0;
+        const totalNegative = (_c = companyAvgSentiment._sum.negativeScore) !== null && _c !== void 0 ? _c : 0;
+        const avgSentiment = count > 0 ? (totalPositive - totalNegative) / count : 0;
         res.status(200).json({
             companyOverview: companyInfo,
+            avgSentiment: Number(avgSentiment.toFixed(3)),
         });
     }
     catch (error) {
         logger_1.default.error("There was an error in fetching company overview details", {
-            id: (_a = req.user) === null || _a === void 0 ? void 0 : _a.id,
+            id: (_d = req.user) === null || _d === void 0 ? void 0 : _d.id,
             error: error.message,
         });
         res.status(500).json({
@@ -95,6 +104,92 @@ const companyInformation = (req, res) => __awaiter(void 0, void 0, void 0, funct
     }
 });
 exports.companyInformation = companyInformation;
+// Helper to round results
+const roundSentiment = (sentiments) => {
+    return sentiments.map((item) => (Object.assign(Object.assign({}, item), { avgSentiment: item.avgSentiment === null
+            ? 0 // Default to 0 if no articles
+            : Math.round(item.avgSentiment * 1000) / 1000 })));
+};
+const getSectorSentimentTrends = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    try {
+        const { sectorId } = req.params;
+        const idAsNumber = parseInt(sectorId, 10);
+        // --- 1. VALIDATE sectorId ---
+        if (isNaN(idAsNumber)) {
+            return res.status(400).json({ error: 'Invalid Sector ID' });
+        }
+        // --- 2. VALIDATE query param ---
+        const { infoRangeType: range } = req.query;
+        if (range !== 'weekly' && range !== 'monthly') {
+            return res.status(400).json({
+                error: "Invalid or missing 'infoRangeType'. Must be 'weekly' or 'monthly'.",
+            });
+        }
+        // --- 3. Set up dynamic SQL parts (now that input is safe) ---
+        const rangeUnit = range === 'weekly' ? client_1.Prisma.raw("week") : client_1.Prisma.raw("month");
+        const interval = range === 'weekly' ? client_1.Prisma.raw("'4 weeks'") : client_1.Prisma.raw("'4 months'");
+        // --- 4. Run the Corrected Query ---
+        const sentimentQuery = yield prisma_1.prisma.$queryRaw(client_1.Prisma.sql `
+        -- CTE to get relevant companies and their names
+        WITH "SectorCompanies" AS (
+          SELECT "id", "name" FROM "Startups" WHERE "sectorId" = ${idAsNumber}
+        )
+        SELECT
+          T1."startupId" AS "companyId",
+          T2."name" AS "companyName",
+          DATE_TRUNC('week', T3."publishedAt") AS "time_bucket",
+          (
+            SUM(COALESCE(T1."positiveScore", 0)) - SUM(COALESCE(T1."negativeScore", 0))
+          ) / NULLIF(COUNT(T1."id"), 0) AS "avgSentiment"
+        FROM "ArticlesSentiment" AS T1
+        JOIN "SectorCompanies" AS T2 ON T1."startupId" = T2."id"
+        JOIN "Articles" AS T3 ON T1."articleId" = T3."id"
+        WHERE
+          T3."publishedAt" >= (DATE_TRUNC('week', NOW()) - INTERVAL ${interval})
+        GROUP BY
+          T1."startupId",
+          T2."name",
+          "time_bucket"
+        ORDER BY
+          "time_bucket" DESC,
+          "companyName";
+      `);
+        console.log(sentimentQuery);
+        // --- 5. Transform the flat data into a grouped structure ---
+        const companyMap = new Map();
+        for (const row of sentimentQuery) {
+            if (!companyMap.has(row.companyId)) {
+                companyMap.set(row.companyId, {
+                    companyId: row.companyId,
+                    companyName: row.companyName,
+                    stats: [],
+                });
+            }
+            companyMap.get(row.companyId).stats.push({
+                time_bucket: row.time_bucket,
+                avgSentiment: row.avgSentiment === null
+                    ? 0
+                    : Math.round(row.avgSentiment * 1000) / 1000,
+            });
+        }
+        const groupedResponse = Array.from(companyMap.values());
+        // --- 6. Send Response ---
+        res.status(200).json({
+            sentiments: groupedResponse,
+        });
+    }
+    catch (error) {
+        logger_1.default.error('There was an error in fetching sector sentiment trends', {
+            id: (_a = req.user) === null || _a === void 0 ? void 0 : _a.id,
+            error: error.message,
+        });
+        res.status(500).json({
+            error: 'There was an error in fetching sector sentiment trends',
+        });
+    }
+});
+exports.getSectorSentimentTrends = getSectorSentimentTrends;
 const sentimentTrendOverPeriod = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     try {
@@ -125,50 +220,6 @@ const sentimentTrendOverPeriod = (req, res) => __awaiter(void 0, void 0, void 0,
     }
 });
 exports.sentimentTrendOverPeriod = sentimentTrendOverPeriod;
-const recentNewsOfCompany = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a;
-    try {
-        const id = req.params;
-        const companyId = id.companyId;
-        // const companyInfo:{
-        //   title:string,
-        //   url:string|null,
-        //   content:string,
-        //   publishedAt:Date,
-        //   sentimentScores:number|null,
-        //   sentiment:string
-        // }[] = await prisma.articles.findMany({
-        //   where:{
-        //   },
-        //   orderBy:{
-        //     publishedAt:"desc"
-        //   },
-        //   take:5, 
-        //   select:{
-        //     title:true,
-        //     url:true,
-        //     content:true,
-        //     publishedAt:true,
-        //     // sentimentScores:true,
-        //     sentiment:true
-        //   }
-        // })
-        // const for
-        res.status(200).json({
-            recentNews: ""
-        });
-    }
-    catch (error) {
-        logger_1.default.error("There was an error in fetching company's recent news", {
-            id: (_a = req.user) === null || _a === void 0 ? void 0 : _a.id,
-            error: error.message,
-        });
-        res.status(500).json({
-            error: "There was an error in fetching company's recent news",
-        });
-    }
-});
-exports.recentNewsOfCompany = recentNewsOfCompany;
 const companyAnalysisTrend = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     try {
@@ -190,7 +241,7 @@ const companyAnalysisTrend = (req, res) => __awaiter(void 0, void 0, void 0, fun
 `;
         // const for
         res.status(200).json({
-            companyStats: monthlyCounts
+            companyStats: monthlyCounts,
         });
     }
     catch (error) {
