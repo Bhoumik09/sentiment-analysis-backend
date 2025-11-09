@@ -6,7 +6,6 @@ import searchRouter from "./routes/searchRoutes";
 import companyRouter from "./routes/companyAnalysis";
 import dotenv from "dotenv";
 import fetcherRouter from "./routes/uploader";
-import { prisma } from "./config/prisma";
 const app = express();
 
 dotenv.config();

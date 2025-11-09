@@ -53,7 +53,12 @@ const getPaginatedCompanies = (req, res) => __awaiter(void 0, void 0, void 0, fu
         const results = yield prisma_1.prisma.$queryRaw `
     WITH stats AS (
       SELECT "startupId" , 
-      coalesce(avg("positiveScore" - "negativeScore"), 0.0) AS "avg_sentiment_score", 
+      coalesce(avg(
+          CASE 
+            WHEN "sentiment" != 'neutral' THEN "positiveScore" - "negativeScore" 
+            ELSE NULL 
+          END
+        ), 0.0) as "avg_sentiment_score",
       coalesce(cast(count(*) AS INT), 0) AS "total_articles"
       FROM "ArticlesSentiment" 
       GROUP BY "startupId"
@@ -73,7 +78,12 @@ const getPaginatedCompanies = (req, res) => __awaiter(void 0, void 0, void 0, fu
     WITH stats AS (
       -- This CTE must be IDENTICAL to the one above
       SELECT "startupId" , 
-      coalesce(avg("positiveScore" - "negativeScore"), 0.0) AS "avg_sentiment_score", 
+      coalesce(avg(
+          CASE 
+            WHEN "sentiment" != 'neutral' THEN "positiveScore" - "negativeScore" 
+            ELSE NULL 
+          END
+        ), 0.0) as "avg_sentiment_score",
       coalesce(cast(count(*) AS INT), 0) AS "total_articles"
       FROM "ArticlesSentiment" 
       GROUP BY "startupId"
