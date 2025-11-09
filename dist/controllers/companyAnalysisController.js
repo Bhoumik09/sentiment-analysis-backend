@@ -47,7 +47,7 @@ const companySentimentInfo = (req, res) => __awaiter(void 0, void 0, void 0, fun
 });
 exports.companySentimentInfo = companySentimentInfo;
 const companyInformation = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b, _c, _d;
+    var _a, _b, _c;
     try {
         const id = req.params;
         const companyId = id.companyId;
@@ -80,13 +80,20 @@ const companyInformation = (req, res) => __awaiter(void 0, void 0, void 0, funct
                 startupId: companyId,
             },
         });
-        const [companyInfo, companyAvgSentiment] = yield Promise.all([
+        const neutralCountQuery = prisma_1.prisma.articlesSentiment.count({
+            where: {
+                startupId: companyId,
+                sentiment: "neutral", // Filter for neutral here
+            },
+        });
+        const [companyInfo, companyAvgSentiment, neutralCount] = yield Promise.all([
             companyInfoQuery,
             companyAvgSentimentQuery,
+            neutralCountQuery,
         ]);
-        const count = (_a = companyAvgSentiment._count._all) !== null && _a !== void 0 ? _a : 0;
-        const totalPositive = (_b = companyAvgSentiment._sum.positiveScore) !== null && _b !== void 0 ? _b : 0;
-        const totalNegative = (_c = companyAvgSentiment._sum.negativeScore) !== null && _c !== void 0 ? _c : 0;
+        const count = companyAvgSentiment._count._all - neutralCount;
+        const totalPositive = (_a = companyAvgSentiment._sum.positiveScore) !== null && _a !== void 0 ? _a : 0;
+        const totalNegative = (_b = companyAvgSentiment._sum.negativeScore) !== null && _b !== void 0 ? _b : 0;
         const avgSentiment = count > 0 ? (totalPositive - totalNegative) / count : 0;
         res.status(200).json({
             companyOverview: companyInfo,
@@ -95,7 +102,7 @@ const companyInformation = (req, res) => __awaiter(void 0, void 0, void 0, funct
     }
     catch (error) {
         logger_1.default.error("There was an error in fetching company overview details", {
-            id: (_d = req.user) === null || _d === void 0 ? void 0 : _d.id,
+            id: (_c = req.user) === null || _c === void 0 ? void 0 : _c.id,
             error: error.message,
         });
         res.status(500).json({
@@ -115,20 +122,25 @@ const getSectorSentimentTrends = (req, res) => __awaiter(void 0, void 0, void 0,
     try {
         const { sectorId } = req.params;
         const idAsNumber = parseInt(sectorId, 10);
+        console.log(idAsNumber);
         // --- 1. VALIDATE sectorId ---
         if (isNaN(idAsNumber)) {
-            return res.status(400).json({ error: 'Invalid Sector ID' });
+            logger_1.default.error("Invalid Sector ID provided", { sectorId });
+            res.status(400).json({ error: "Invalid Sector ID" });
+            return;
         }
         // --- 2. VALIDATE query param ---
         const { infoRangeType: range } = req.query;
-        if (range !== 'weekly' && range !== 'monthly') {
-            return res.status(400).json({
+        if (range !== "weekly" && range !== "monthly") {
+            logger_1.default.error("Invalid or missing 'infoRangeType'. Must be 'weekly' or 'monthly'");
+            res.status(400).json({
                 error: "Invalid or missing 'infoRangeType'. Must be 'weekly' or 'monthly'.",
             });
+            return;
         }
         // --- 3. Set up dynamic SQL parts (now that input is safe) ---
-        const rangeUnit = range === 'weekly' ? client_1.Prisma.raw("week") : client_1.Prisma.raw("month");
-        const interval = range === 'weekly' ? client_1.Prisma.raw("'4 weeks'") : client_1.Prisma.raw("'4 months'");
+        const rangeUnit = range === "weekly" ? client_1.Prisma.raw("week") : client_1.Prisma.raw("month");
+        const interval = range === "weekly" ? client_1.Prisma.raw("'4 weeks'") : client_1.Prisma.raw("'4 months'");
         // --- 4. Run the Corrected Query ---
         const sentimentQuery = yield prisma_1.prisma.$queryRaw(client_1.Prisma.sql `
         -- CTE to get relevant companies and their names
@@ -138,7 +150,7 @@ const getSectorSentimentTrends = (req, res) => __awaiter(void 0, void 0, void 0,
         SELECT
           T1."startupId" AS "companyId",
           T2."name" AS "companyName",
-          DATE_TRUNC('week', T3."publishedAt") AS "time_bucket",
+          DATE_TRUNC('month', T3."publishedAt") AS "time_bucket",
           (
             SUM(COALESCE(T1."positiveScore", 0)) - SUM(COALESCE(T1."negativeScore", 0))
           ) / NULLIF(COUNT(T1."id"), 0) AS "avgSentiment"
@@ -146,13 +158,13 @@ const getSectorSentimentTrends = (req, res) => __awaiter(void 0, void 0, void 0,
         JOIN "SectorCompanies" AS T2 ON T1."startupId" = T2."id"
         JOIN "Articles" AS T3 ON T1."articleId" = T3."id"
         WHERE
-          T3."publishedAt" >= (DATE_TRUNC('week', NOW()) - INTERVAL ${interval})
+          T3."publishedAt" >= (DATE_TRUNC('month', NOW()) - INTERVAL ${interval})
         GROUP BY
           T1."startupId",
           T2."name",
           "time_bucket"
         ORDER BY
-          "time_bucket" DESC,
+          "time_bucket",
           "companyName";
       `);
         console.log(sentimentQuery);
@@ -174,18 +186,19 @@ const getSectorSentimentTrends = (req, res) => __awaiter(void 0, void 0, void 0,
             });
         }
         const groupedResponse = Array.from(companyMap.values());
+        console.log(groupedResponse);
         // --- 6. Send Response ---
         res.status(200).json({
             sentiments: groupedResponse,
         });
     }
     catch (error) {
-        logger_1.default.error('There was an error in fetching sector sentiment trends', {
+        logger_1.default.error("There was an error in fetching sector sentiment trends", {
             id: (_a = req.user) === null || _a === void 0 ? void 0 : _a.id,
             error: error.message,
         });
         res.status(500).json({
-            error: 'There was an error in fetching sector sentiment trends',
+            error: "There was an error in fetching sector sentiment trends",
         });
     }
 });
@@ -233,7 +246,7 @@ const companyAnalysisTrend = (req, res) => __awaiter(void 0, void 0, void 0, fun
     "Articles"
   WHERE
     "startupId" = ${companyId}
-    AND "createdAt" >= date_trunc('month', CURRENT_DATE) - interval '6 months'
+    AND "publishedAt" >= date_trunc('month', CURRENT_DATE) - interval '6 months'
   GROUP BY
     month
   ORDER BY

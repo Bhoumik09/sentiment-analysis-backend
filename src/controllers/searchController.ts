@@ -2,58 +2,10 @@ import { Request, Response } from "express";
 import { searchQueryType } from "../types/zod/types";
 import { prisma } from "../config/prisma";
 import logger from "../lib/logger";
-import { ArticlesSentiment, Prisma } from "@prisma/client";
-import { NewsPaginatedDataType } from "../types/all";
+import { Prisma } from "@prisma/client";
 
 // Define a type for the result to improve type safety
-interface StartupWithStats {
-  id: string;
-  name: string;
-  sector: string;
-  total_articles: bigint | null;
-  avg_sentiment_score: number;
-  total_count: bigint | null;
 
-  // New properties for Article 1 (latest)
-  latest_article_1_title: string | null;
-  latest_article_1_url: string | null;
-  latest_article_1_content: string | null;
-  latest_article_1_published_at: Date | null;
-  latest_article_1_sentiment_score: number | null; // New properties for Article 1
-  latest_article_1_sentiment: string | null; // New properties for Article 1
-
-  // New properties for Article 2
-  latest_article_2_title: string | null;
-  latest_article_2_url: string | null;
-  latest_article_2_content: string | null;
-  latest_article_2_published_at: Date | null;
-  latest_article_2_sentiment_score: number | null; // New properties for Article 2
-  latest_article_2_sentiment: string | null;
-
-  // New properties for Article 3
-  latest_article_3_title: string | null;
-  latest_article_3_url: string | null;
-  latest_article_3_content: string | null;
-  latest_article_3_published_at: Date | null;
-  latest_article_3_sentiment_score: number | null; // New properties for Article 3
-  latest_article_3_sentiment: string | null;
-}
-interface StartupResult {
-  id: string;
-  name: string;
-  sector: string;
-  total_articles: number | null;
-  avg_sentiment_score: number;
-
-  latestArticles: {
-    title: string | null;
-    url: string | null;
-    content: string | null;
-    publishedAt: Date | null;
-    sentimentScore: number | null;
-    sentiment: string | null;
-  }[];
-}
 export const getPaginatedCompanies = async (req: Request, res: Response) => {
   // Assuming 'searchQueryType' is defined elsewhere
   const { sentiment, industry, sentimentScoreLimit, page, limit, searchQuery } =
@@ -93,7 +45,7 @@ export const getPaginatedCompanies = async (req: Request, res: Response) => {
   try {
     // --- The Single, Optimized Query ---
     // 1. Your original query for the page's data
-const results: any[] = await prisma.$queryRaw`
+    const results: any[] = await prisma.$queryRaw`
     WITH stats AS (
       SELECT "startupId" , 
       coalesce(avg("positiveScore" - "negativeScore"), 0.0) AS "avg_sentiment_score", 
@@ -105,15 +57,15 @@ const results: any[] = await prisma.$queryRaw`
            COALESCE(st."avg_sentiment_score", 0) AS "avg_sentiment_score", 
            COALESCE(st."total_articles", 0) AS "total_articles" 
     FROM "Startups" s
-    LEFT JOIN "stats" st ON s.id = st."startupId"
+    INNER JOIN "stats" st ON s.id = st."startupId"
     LEFT JOIN "Sector" sec ON sec.id = s."sectorId"
     ${whereClause}  -- Your dynamic WHERE clause
     LIMIT ${itemsLength}
     OFFSET ${offset}
   `;
 
-// 2. The new query to get the TOTAL count
-const countResult: [{ totalCount: bigint }] = await prisma.$queryRaw`
+    // 2. The new query to get the TOTAL count
+    const countResult: [{ totalCount: bigint }] = await prisma.$queryRaw`
     WITH stats AS (
       -- This CTE must be IDENTICAL to the one above
       SELECT "startupId" , 
@@ -124,15 +76,14 @@ const countResult: [{ totalCount: bigint }] = await prisma.$queryRaw`
     )
     SELECT count(s.id) AS "totalCount" -- Select the count
     FROM "Startups" s
-    LEFT JOIN "stats" st ON s.id = st."startupId"
+    INNER JOIN "stats" st ON s.id = st."startupId"
     LEFT JOIN "Sector" sec ON sec.id = s."sectorId"
     ${whereClause}  -- Use the IDENTICAL WHERE clause
     -- No LIMIT or OFFSET
   `;
 
-// 3. Extract the count (and convert from BigInt)
-const totalCount: number = Number(countResult[0].totalCount);
-console.log(totalCount)
+    // 3. Extract the count (and convert from BigInt)
+    const totalCount: number = Number(countResult[0].totalCount);
     res.status(200).json({
       startups: results,
       meta: {
@@ -153,12 +104,12 @@ console.log(totalCount)
   }
 };
 export const getPaginatedNews = async (req: Request, res: Response) => {
-  const { sentiment, industry, page, limit, searchQuery } =
+  const { sentiment, industry, page, limit, searchQuery, companyId } =
     req.query as searchQueryType;
   const pageNumber = page ? Number(page) : 1;
   const itemsLength = limit ? Number(limit) : 10;
   const offset = (pageNumber - 1) * itemsLength;
-  const whereClause ={
+  const whereClause = {
     ...(searchQuery && {
       ArticlesSentiment: {
         some: {
@@ -182,40 +133,48 @@ export const getPaginatedNews = async (req: Request, res: Response) => {
       ArticlesSentiment: {
         some: {
           Startups: {
-            sector:{
-              name:{
-                contains:industry
-              }
-            }
+            sector: {
+              name: {
+                contains: industry,
+              },
+            },
           },
         },
       },
     }),
-  } ;
+    ...(companyId &&
+      companyId !== "" && {
+        ArticlesSentiment: {
+          some: {
+            startupId: companyId,
+          },
+        },
+      }),
+  };
   try {
     const pagiantedNewsData = await prisma.articles.findMany({
       skip: offset,
       take: itemsLength,
       where: whereClause,
-
+      
       include: {
         ArticlesSentiment: {
+          
           omit: {
             createdAt: true,
             articleId: true,
             startupId: true,
-            
           },
           include: {
             Startups: {
               select: {
                 id: true,
                 name: true,
-                sector:{
-                  select:{
-                    name:true
-                  }
-                }
+                sector: {
+                  select: {
+                    name: true,
+                  },
+                },
               },
             },
           },
@@ -225,7 +184,9 @@ export const getPaginatedNews = async (req: Request, res: Response) => {
         createdAt: true,
       },
     });
-    const totalNewsItems:number = await prisma.articles.count({ where: whereClause });
+    const totalNewsItems: number = await prisma.articles.count({
+      where: whereClause,
+    });
     res.status(200).json({
       paginatedNews: pagiantedNewsData,
       paginationInfo: {

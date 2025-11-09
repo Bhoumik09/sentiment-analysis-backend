@@ -16,6 +16,7 @@ exports.getPaginatedNews = exports.getPaginatedCompanies = void 0;
 const prisma_1 = require("../config/prisma");
 const logger_1 = __importDefault(require("../lib/logger"));
 const client_1 = require("@prisma/client");
+// Define a type for the result to improve type safety
 const getPaginatedCompanies = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     // Assuming 'searchQueryType' is defined elsewhere
     const { sentiment, industry, sentimentScoreLimit, page, limit, searchQuery } = req.query;
@@ -61,7 +62,7 @@ const getPaginatedCompanies = (req, res) => __awaiter(void 0, void 0, void 0, fu
            COALESCE(st."avg_sentiment_score", 0) AS "avg_sentiment_score", 
            COALESCE(st."total_articles", 0) AS "total_articles" 
     FROM "Startups" s
-    LEFT JOIN "stats" st ON s.id = st."startupId"
+    INNER JOIN "stats" st ON s.id = st."startupId"
     LEFT JOIN "Sector" sec ON sec.id = s."sectorId"
     ${whereClause}  -- Your dynamic WHERE clause
     LIMIT ${itemsLength}
@@ -79,14 +80,13 @@ const getPaginatedCompanies = (req, res) => __awaiter(void 0, void 0, void 0, fu
     )
     SELECT count(s.id) AS "totalCount" -- Select the count
     FROM "Startups" s
-    LEFT JOIN "stats" st ON s.id = st."startupId"
+    INNER JOIN "stats" st ON s.id = st."startupId"
     LEFT JOIN "Sector" sec ON sec.id = s."sectorId"
     ${whereClause}  -- Use the IDENTICAL WHERE clause
     -- No LIMIT or OFFSET
   `;
         // 3. Extract the count (and convert from BigInt)
         const totalCount = Number(countResult[0].totalCount);
-        console.log(totalCount);
         res.status(200).json({
             startups: results,
             meta: {
@@ -109,11 +109,11 @@ const getPaginatedCompanies = (req, res) => __awaiter(void 0, void 0, void 0, fu
 });
 exports.getPaginatedCompanies = getPaginatedCompanies;
 const getPaginatedNews = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { sentiment, industry, page, limit, searchQuery } = req.query;
+    const { sentiment, industry, page, limit, searchQuery, companyId } = req.query;
     const pageNumber = page ? Number(page) : 1;
     const itemsLength = limit ? Number(limit) : 10;
     const offset = (pageNumber - 1) * itemsLength;
-    const whereClause = Object.assign(Object.assign(Object.assign({}, (searchQuery && {
+    const whereClause = Object.assign(Object.assign(Object.assign(Object.assign({}, (searchQuery && {
         ArticlesSentiment: {
             some: {
                 Startups: {
@@ -136,10 +136,17 @@ const getPaginatedNews = (req, res) => __awaiter(void 0, void 0, void 0, functio
                 Startups: {
                     sector: {
                         name: {
-                            contains: industry
-                        }
-                    }
+                            contains: industry,
+                        },
+                    },
                 },
+            },
+        },
+    })), (companyId &&
+        companyId !== "" && {
+        ArticlesSentiment: {
+            some: {
+                startupId: companyId,
             },
         },
     }));
@@ -162,9 +169,9 @@ const getPaginatedNews = (req, res) => __awaiter(void 0, void 0, void 0, functio
                                 name: true,
                                 sector: {
                                     select: {
-                                        name: true
-                                    }
-                                }
+                                        name: true,
+                                    },
+                                },
                             },
                         },
                     },
@@ -174,7 +181,9 @@ const getPaginatedNews = (req, res) => __awaiter(void 0, void 0, void 0, functio
                 createdAt: true,
             },
         });
-        const totalNewsItems = yield prisma_1.prisma.articles.count({ where: whereClause });
+        const totalNewsItems = yield prisma_1.prisma.articles.count({
+            where: whereClause,
+        });
         res.status(200).json({
             paginatedNews: pagiantedNewsData,
             paginationInfo: {

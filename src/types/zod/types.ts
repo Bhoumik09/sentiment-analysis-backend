@@ -16,6 +16,7 @@ export const searchQuery=z.object({
     page:z.string().optional(),
     limit:z.string().optional(),
     searchQuery:z.string().optional(),
+    companyId:z.string().optional(),
     
 })
 export type searchQueryType=z.infer<typeof searchQuery>

@@ -19,5 +19,6 @@ exports.searchQuery = zod_1.z.object({
     page: zod_1.z.string().optional(),
     limit: zod_1.z.string().optional(),
     searchQuery: zod_1.z.string().optional(),
+    companyId: zod_1.z.string().optional(),
 });
 //# sourceMappingURL=types.js.map

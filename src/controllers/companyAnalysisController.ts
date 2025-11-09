@@ -3,6 +3,7 @@ import { prisma } from "../config/prisma";
 import logger from "../lib/logger";
 import { sentimentTrendAvg, companyNewsData } from "../types/all";
 import { Prisma } from "@prisma/client";
+import { AcceleratePromise } from "@prisma/extension-accelerate";
 export interface companyInfo {
   positiveCount: bigint;
   negativeCount: bigint;
@@ -102,11 +103,18 @@ export const companyInformation = async (
         startupId: companyId,
       },
     });
-    const [companyInfo, companyAvgSentiment] = await Promise.all([
+    const neutralCountQuery = prisma.articlesSentiment.count({
+      where: {
+        startupId: companyId,
+        sentiment: "neutral", // Filter for neutral here
+      },
+    });
+    const [companyInfo, companyAvgSentiment, neutralCount] = await Promise.all([
       companyInfoQuery,
       companyAvgSentimentQuery,
+      neutralCountQuery,
     ]);
-    const count: number = companyAvgSentiment._count._all ?? 0;
+    const count: number = companyAvgSentiment._count._all - neutralCount;
     const totalPositive: number = companyAvgSentiment._sum.positiveScore ?? 0;
     const totalNegative: number = companyAvgSentiment._sum.negativeScore ?? 0;
     const avgSentiment: number =
@@ -115,7 +123,6 @@ export const companyInformation = async (
     res.status(200).json({
       companyOverview: companyInfo,
       avgSentiment: Number(avgSentiment.toFixed(3)),
-      
     });
   } catch (error: any) {
     logger.error("There was an error in fetching company overview details", {
@@ -146,7 +153,6 @@ const roundSentiment = (sentiments: CompanyTimeGroupedSentiment[]) => {
   }));
 };
 
-
 type CompanySentimentRow = {
   companyId: string;
   companyName: string;
@@ -171,23 +177,33 @@ export const getSectorSentimentTrends = async (req: Request, res: Response) => {
   try {
     const { sectorId } = req.params;
     const idAsNumber = parseInt(sectorId, 10);
-
+    console.log(idAsNumber);
     // --- 1. VALIDATE sectorId ---
     if (isNaN(idAsNumber)) {
-      return res.status(400).json({ error: 'Invalid Sector ID' });
+      logger.error("Invalid Sector ID provided", { sectorId });
+      res.status(400).json({ error: "Invalid Sector ID" });
+      return;
     }
 
     // --- 2. VALIDATE query param ---
     const { infoRangeType: range } = req.query;
-    if (range !== 'weekly' && range !== 'monthly') {
-      return res.status(400).json({
-        error: "Invalid or missing 'infoRangeType'. Must be 'weekly' or 'monthly'.",
+    if (range !== "weekly" && range !== "monthly") {
+      logger.error(
+        "Invalid or missing 'infoRangeType'. Must be 'weekly' or 'monthly'"
+      );
+
+      res.status(400).json({
+        error:
+          "Invalid or missing 'infoRangeType'. Must be 'weekly' or 'monthly'.",
       });
+      return;
     }
 
     // --- 3. Set up dynamic SQL parts (now that input is safe) ---
-    const rangeUnit = range === 'weekly' ? Prisma.raw("week") : Prisma.raw("month");
-    const interval = range === 'weekly' ? Prisma.raw("'4 weeks'") : Prisma.raw("'4 months'");
+    const rangeUnit =
+      range === "weekly" ? Prisma.raw("week") : Prisma.raw("month");
+    const interval =
+      range === "weekly" ? Prisma.raw("'4 weeks'") : Prisma.raw("'4 months'");
     // --- 4. Run the Corrected Query ---
     const sentimentQuery = await prisma.$queryRaw<CompanySentimentRow[]>(
       Prisma.sql`
@@ -198,7 +214,7 @@ export const getSectorSentimentTrends = async (req: Request, res: Response) => {
         SELECT
           T1."startupId" AS "companyId",
           T2."name" AS "companyName",
-          DATE_TRUNC('week', T3."publishedAt") AS "time_bucket",
+          DATE_TRUNC('month', T3."publishedAt") AS "time_bucket",
           (
             SUM(COALESCE(T1."positiveScore", 0)) - SUM(COALESCE(T1."negativeScore", 0))
           ) / NULLIF(COUNT(T1."id"), 0) AS "avgSentiment"
@@ -206,17 +222,17 @@ export const getSectorSentimentTrends = async (req: Request, res: Response) => {
         JOIN "SectorCompanies" AS T2 ON T1."startupId" = T2."id"
         JOIN "Articles" AS T3 ON T1."articleId" = T3."id"
         WHERE
-          T3."publishedAt" >= (DATE_TRUNC('week', NOW()) - INTERVAL ${interval})
+          T3."publishedAt" >= (DATE_TRUNC('month', NOW()) - INTERVAL ${interval})
         GROUP BY
           T1."startupId",
           T2."name",
           "time_bucket"
         ORDER BY
-          "time_bucket" DESC,
+          "time_bucket",
           "companyName";
       `
     );
-    console.log(sentimentQuery)
+    console.log(sentimentQuery);
     // --- 5. Transform the flat data into a grouped structure ---
     const companyMap = new Map<string, GroupedSentimentResponse>();
     for (const row of sentimentQuery) {
@@ -236,18 +252,18 @@ export const getSectorSentimentTrends = async (req: Request, res: Response) => {
       });
     }
     const groupedResponse = Array.from(companyMap.values());
-
+    console.log(groupedResponse);
     // --- 6. Send Response ---
     res.status(200).json({
       sentiments: groupedResponse,
     });
   } catch (error: any) {
-    logger.error('There was an error in fetching sector sentiment trends', {
+    logger.error("There was an error in fetching sector sentiment trends", {
       id: req.user?.id,
       error: error.message,
     });
     res.status(500).json({
-      error: 'There was an error in fetching sector sentiment trends',
+      error: "There was an error in fetching sector sentiment trends",
     });
   }
 };
@@ -302,7 +318,7 @@ export const companyAnalysisTrend = async (req: Request, res: Response) => {
     "Articles"
   WHERE
     "startupId" = ${companyId}
-    AND "createdAt" >= date_trunc('month', CURRENT_DATE) - interval '6 months'
+    AND "publishedAt" >= date_trunc('month', CURRENT_DATE) - interval '6 months'
   GROUP BY
     month
   ORDER BY
