@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.companyAnalysisTrend = exports.sentimentTrendOverPeriod = exports.getSectorSentimentTrends = exports.companyInformation = exports.companySentimentInfo = void 0;
+exports.getSectorSentimentTrends = exports.companyInformation = exports.companySentimentInfo = void 0;
 const prisma_1 = require("../config/prisma");
 const logger_1 = __importDefault(require("../lib/logger"));
 const client_1 = require("@prisma/client");
@@ -111,18 +111,10 @@ const companyInformation = (req, res) => __awaiter(void 0, void 0, void 0, funct
     }
 });
 exports.companyInformation = companyInformation;
-// Helper to round results
-const roundSentiment = (sentiments) => {
-    return sentiments.map((item) => (Object.assign(Object.assign({}, item), { avgSentiment: item.avgSentiment === null
-            ? 0 // Default to 0 if no articles
-            : Math.round(item.avgSentiment * 1000) / 1000 })));
-};
 const getSectorSentimentTrends = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a;
     try {
         const { sectorId } = req.params;
         const idAsNumber = parseInt(sectorId, 10);
-        console.log(idAsNumber);
         // --- 1. VALIDATE sectorId ---
         if (isNaN(idAsNumber)) {
             logger_1.default.error("Invalid Sector ID provided", { sectorId });
@@ -139,36 +131,66 @@ const getSectorSentimentTrends = (req, res) => __awaiter(void 0, void 0, void 0,
             return;
         }
         // --- 3. Set up dynamic SQL parts (now that input is safe) ---
-        const rangeUnit = range === "weekly" ? client_1.Prisma.raw("week") : client_1.Prisma.raw("month");
+        const rangeUnit = range === "weekly" ? client_1.Prisma.raw("'week'") : client_1.Prisma.raw("'month'");
         const interval = range === "weekly" ? client_1.Prisma.raw("'4 weeks'") : client_1.Prisma.raw("'4 months'");
-        // --- 4. Run the Corrected Query ---
+        const movingAvgWindow = 3; // 3 PRECEDING + 1 CURRENT = 4 periods
         const sentimentQuery = yield prisma_1.prisma.$queryRaw(client_1.Prisma.sql `
-        -- CTE to get relevant companies and their names
+        -- CTE 1: Get relevant companies for the requested sector
         WITH "SectorCompanies" AS (
           SELECT "id", "name" FROM "Startups" WHERE "sectorId" = ${idAsNumber}
+        ),
+
+        -- CTE 2: Calculate the "spiky" average for each bucket for *those* companies
+        "BucketAverages" AS (
+          SELECT
+            T1."startupId" AS "companyId",
+            T2."name" AS "companyName",
+            DATE_TRUNC(${rangeUnit}, T3."publishedAt") AS "time_bucket",
+            SUM(
+              CASE 
+                WHEN T1."sentiment" != 'neutral' 
+                THEN COALESCE(T1."positiveScore", 0) - COALESCE(T1."negativeScore", 0) 
+                ELSE 0 
+              END
+            ) / 
+            NULLIF(
+              COUNT(
+                CASE WHEN T1."sentiment" != 'neutral' 
+                THEN T1."id"
+                ELSE null
+              END), 0
+            ) AS "avgSentiment"
+          FROM "ArticlesSentiment" AS T1
+          JOIN "SectorCompanies" AS T2 ON T1."startupId" = T2."id" -- <-- THIS NOW CORRECTLY FILTERS BY SECTOR
+          JOIN "Articles" AS T3 ON T1."articleId" = T3."id"
+          WHERE
+            T3."publishedAt" >= (DATE_TRUNC(${rangeUnit}, NOW()) - INTERVAL ${interval})
+          GROUP BY
+            T1."startupId",
+            T2."name",
+            "time_bucket"
         )
+        -- CTE 3: Apply the moving average over the "spiky" data
         SELECT
-          T1."startupId" AS "companyId",
-          T2."name" AS "companyName",
-          DATE_TRUNC('month', T3."publishedAt") AS "time_bucket",
-          (
-            SUM(COALESCE(T1."positiveScore", 0)) - SUM(COALESCE(T1."negativeScore", 0))
-          ) / NULLIF(COUNT(T1."id"), 0) AS "avgSentiment"
-        FROM "ArticlesSentiment" AS T1
-        JOIN "SectorCompanies" AS T2 ON T1."startupId" = T2."id"
-        JOIN "Articles" AS T3 ON T1."articleId" = T3."id"
-        WHERE
-          T3."publishedAt" >= (DATE_TRUNC('month', NOW()) - INTERVAL ${interval})
-        GROUP BY
-          T1."startupId",
-          T2."name",
-          "time_bucket"
+          "companyId",
+          "companyName",
+          "time_bucket",
+          "avgSentiment", -- We keep this just for logging
+          
+          -- This is the new "smooth" line
+          AVG("avgSentiment") OVER (
+            PARTITION BY "companyName" -- Calculate separately for each company
+            ORDER BY "time_bucket"     -- In chronological order
+            ROWS BETWEEN ${movingAvgWindow} PRECEDING AND CURRENT ROW -- 4-period moving average
+          ) AS "movingAvgSentiment"
+          
+        FROM "BucketAverages"
         ORDER BY
           "time_bucket",
           "companyName";
       `);
-        console.log(sentimentQuery);
         // --- 5. Transform the flat data into a grouped structure ---
+        // (This part is unchanged and remains correct)
         const companyMap = new Map();
         for (const row of sentimentQuery) {
             if (!companyMap.has(row.companyId)) {
@@ -180,21 +202,19 @@ const getSectorSentimentTrends = (req, res) => __awaiter(void 0, void 0, void 0,
             }
             companyMap.get(row.companyId).stats.push({
                 time_bucket: row.time_bucket,
-                avgSentiment: row.avgSentiment === null
+                avgSentiment: row.movingAvgSentiment === null // <-- Use the smooth value
                     ? 0
-                    : Math.round(row.avgSentiment * 1000) / 1000,
+                    : Math.round(row.movingAvgSentiment * 1000) / 1000,
             });
         }
         const groupedResponse = Array.from(companyMap.values());
-        console.log(groupedResponse);
-        // --- 6. Send Response ---
         res.status(200).json({
             sentiments: groupedResponse,
         });
     }
     catch (error) {
         logger_1.default.error("There was an error in fetching sector sentiment trends", {
-            id: (_a = req.user) === null || _a === void 0 ? void 0 : _a.id,
+            // id: req.user?.id,
             error: error.message,
         });
         res.status(500).json({
@@ -203,69 +223,4 @@ const getSectorSentimentTrends = (req, res) => __awaiter(void 0, void 0, void 0,
     }
 });
 exports.getSectorSentimentTrends = getSectorSentimentTrends;
-const sentimentTrendOverPeriod = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a;
-    try {
-        const id = req.params;
-        const companyId = id.companyId;
-        const companyInfo = yield prisma_1.prisma.$queryRaw `
-      select avg("sentimentScores") as current_month,
-      coalesce(avg(case when "createdAt"<= date_trunc('month', CURRENT_DATE) - interval '1 month' then "sentimentScores" end),0) as "previous_month",
-      coalesce(avg(case when "createdAt"<= date_trunc('month', CURRENT_DATE) - interval '2 month' then "sentimentScores" end),0) as "twoMonthsEarlier",
-      coalesce(avg(case when "createdAt"<= date_trunc('month', CURRENT_DATE) - interval '3 month' then "sentimentScores" end),0) as "threeMonthsEarlier",
-      coalesce(avg(case when "createdAt"<= date_trunc('month', CURRENT_DATE) - interval '4 month' then "sentimentScores" end),0) as "fourMonthsEarlier",
-      coalesce(avg(case when "createdAt"<= date_trunc('month', CURRENT_DATE) - interval '5 month' then "sentimentScores" end),0) as "fiveMonthsEarlier"
-      from "Articles" where "startupId"=${companyId};
-    `;
-        // const for
-        res.status(200).json({
-            companyOverview: companyInfo.map((info) => (Object.assign(Object.assign({}, info), { current_month: Number(info.current_month), previous_month: Number(info.previous_month), twoMonthsEarlier: Number(info.twoMonthsEarlier), threeMonthsEarlier: Number(info.threeMonthsEarlier), fourMonthsEarlier: Number(info.fourMonthsEarlier), fiveMonthsEarlier: Number(info.fiveMonthsEarlier) })))[0],
-        });
-    }
-    catch (error) {
-        logger_1.default.error("There was an error in fetching company overview details", {
-            id: (_a = req.user) === null || _a === void 0 ? void 0 : _a.id,
-            error: error.message,
-        });
-        res.status(500).json({
-            error: "There was an error in fetching company overview details",
-        });
-    }
-});
-exports.sentimentTrendOverPeriod = sentimentTrendOverPeriod;
-const companyAnalysisTrend = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a;
-    try {
-        const id = req.params;
-        const companyId = id.companyId;
-        const monthlyCounts = yield prisma_1.prisma.$queryRaw `
-  SELECT
-    date_trunc('month', "publishedAt")::date AS month,
-    CAST(COUNT(*) AS INTEGER) AS "articleCount"
-  FROM
-    "Articles"
-  WHERE
-    "startupId" = ${companyId}
-    AND "publishedAt" >= date_trunc('month', CURRENT_DATE) - interval '6 months'
-  GROUP BY
-    month
-  ORDER BY
-    month DESC;
-`;
-        // const for
-        res.status(200).json({
-            companyStats: monthlyCounts,
-        });
-    }
-    catch (error) {
-        logger_1.default.error("There was an error in fetching company's recent news", {
-            id: (_a = req.user) === null || _a === void 0 ? void 0 : _a.id,
-            error: error.message,
-        });
-        res.status(500).json({
-            error: "There was an error in fetching company's recent news",
-        });
-    }
-});
-exports.companyAnalysisTrend = companyAnalysisTrend;
 //# sourceMappingURL=companyAnalysisController.js.map

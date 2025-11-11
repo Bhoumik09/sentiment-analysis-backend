@@ -24,7 +24,6 @@ const getPaginatedCompanies = (req, res) => __awaiter(void 0, void 0, void 0, fu
     const itemsLength = limit ? Number(limit) : 10;
     // CRITICAL FIX: The offset calculation was incorrect. It should be (page - 1) * limit.
     const offset = (pageNumber - 1) * itemsLength;
-    console.log(sentimentScoreLimit);
     const conditions = [];
     if (searchQuery) {
         conditions.push(client_1.Prisma.sql `s.name ILIKE ${`%${searchQuery}%`}`);

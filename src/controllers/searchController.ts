@@ -15,7 +15,6 @@ export const getPaginatedCompanies = async (req: Request, res: Response) => {
   const itemsLength = limit ? Number(limit) : 10;
   // CRITICAL FIX: The offset calculation was incorrect. It should be (page - 1) * limit.
   const offset = (pageNumber - 1) * itemsLength;
-  console.log(sentimentScoreLimit);
   const conditions: Prisma.Sql[] = [];
   if (searchQuery) {
     conditions.push(Prisma.sql`s.name ILIKE ${`%${searchQuery}%`}`);
@@ -45,7 +44,7 @@ export const getPaginatedCompanies = async (req: Request, res: Response) => {
   try {
     // --- The Single, Optimized Query ---
     // 1. Your original query for the page's data
-    const results: any[] = await prisma.$queryRaw`
+    const results  = await prisma.$queryRaw<{id:string; name:string; sector:string; imageUrl:string; description:string;avg_sentiment_score:number; total_articles:number}[]>`
     WITH stats AS (
       SELECT "startupId" , 
       coalesce(avg(
@@ -68,7 +67,6 @@ export const getPaginatedCompanies = async (req: Request, res: Response) => {
     LIMIT ${itemsLength}
     OFFSET ${offset}
   `;
-
     // 2. The new query to get the TOTAL count
     const countResult: [{ totalCount: bigint }] = await prisma.$queryRaw`
     WITH stats AS (
