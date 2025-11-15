@@ -47,7 +47,6 @@ const getPaginatedCompanies = (req, res) => __awaiter(void 0, void 0, void 0, fu
         ? client_1.Prisma.sql `WHERE ${client_1.Prisma.join(conditions, " AND ")}`
         : "";
     try {
-        // --- The Single, Optimized Query ---
         // 1. Your original query for the page's data
         const results = yield prisma_1.prisma.$queryRaw `
     WITH stats AS (
@@ -189,6 +188,10 @@ const getPaginatedNews = (req, res) => __awaiter(void 0, void 0, void 0, functio
             omit: {
                 createdAt: true,
             },
+            orderBy: {
+                publishedAt: 'desc',
+                createdAt: 'desc'
+            }
         });
         const totalNewsItems = yield prisma_1.prisma.articles.count({
             where: whereClause,

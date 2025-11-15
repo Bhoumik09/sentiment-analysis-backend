@@ -3,9 +3,7 @@ import { searchQueryType } from "../types/zod/types";
 import { prisma } from "../config/prisma";
 import logger from "../lib/logger";
 import { Prisma } from "@prisma/client";
-
 // Define a type for the result to improve type safety
-
 export const getPaginatedCompanies = async (req: Request, res: Response) => {
   // Assuming 'searchQueryType' is defined elsewhere
   const { sentiment, industry, sentimentScoreLimit, page, limit, searchQuery } =
@@ -42,7 +40,7 @@ export const getPaginatedCompanies = async (req: Request, res: Response) => {
       ? Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`
       : "";
   try {
-    // --- The Single, Optimized Query ---
+
     // 1. Your original query for the page's data
     const results  = await prisma.$queryRaw<{id:string; name:string; sector:string; imageUrl:string; description:string;avg_sentiment_score:number; total_articles:number}[]>`
     WITH stats AS (
@@ -191,6 +189,10 @@ export const getPaginatedNews = async (req: Request, res: Response) => {
       omit: {
         createdAt: true,
       },
+      orderBy:{
+        publishedAt:'desc',
+        createdAt:'desc'
+      }
     });
     const totalNewsItems: number = await prisma.articles.count({
       where: whereClause,
