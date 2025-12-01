@@ -20,9 +20,9 @@ model User {
 model Articles {
   id                String              @id @default(uuid())
   title             String
-  content           String @db.VarChar()
+  content           String              @db.VarChar
   publishedAt       DateTime
-  url               String?
+  url               String?             @unique(map: "articles_url_unique")
   createdAt         DateTime            @default(now())
   ArticlesSentiment ArticlesSentiment[]
 }
@@ -30,30 +30,32 @@ model Articles {
 model Startups {
   id                String              @id @default(uuid())
   name              String
-  sector            Sector @relation("Company Sectors", references: [id],fields: [sectorId])
-  sectorId          Int
-  findingKeywords   String[]
+  findingKeywords   String?
   description       String?
   createdAt         DateTime            @default(now())
   imageUrl          String?
+  sectorId          Int
   ArticlesSentiment ArticlesSentiment[]
+  sector            Sector              @relation("Company Sectors", fields: [sectorId], references: [id])
 }
-model Sector{
-  id Int @id @default(autoincrement())
-  name String
+
+model Sector {
+  id              Int        @id @default(autoincrement())
+  name            String
   companiesLinked Startups[] @relation("Company Sectors")
 }
+
 model ArticlesSentiment {
-  id             String   @id
-  articleId      String
-  startupId      String
-  createdAt      DateTime @default(now())
-  sentiment      String?
-  positiveScore Float?
+  id            String   @id
+  articleId     String
+  startupId     String
+  createdAt     DateTime @default(now())
+  sentiment     String?
   negativeScore Float?
   neutralScore  Float?
-  Articles       Articles @relation(fields: [articleId], references: [id])
-  Startups       Startups @relation(fields: [startupId], references: [id])
+  positiveScore Float?
+  Articles      Articles @relation(fields: [articleId], references: [id])
+  Startups      Startups @relation(fields: [startupId], references: [id])
 
   @@unique([articleId, startupId])
 }

@@ -6,7 +6,6 @@ import searchRouter from "./routes/searchRoutes";
 import companyRouter from "./routes/companyAnalysis";
 import dotenv from "dotenv";
 import fetcherRouter from "./routes/uploader";
-import { prisma } from "./config/prisma";
 const app = express();
 
 dotenv.config();
@@ -21,6 +20,7 @@ app.use("/fetcher", fetcherRouter);
 app.get("/", (req, res) => {
   res.send("API is running....");
 });
+
 if (process.env.NODE_ENV !== "PRODUCTION") {
   app.listen(5000, () => {
     console.log("Server is running at 5000");
